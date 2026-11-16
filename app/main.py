@@ -1,6 +1,14 @@
 ﻿from __future__ import annotations
 
+import sys
 from pathlib import Path
+
+# Log của app có tiếng Việt và ký tự khung; trên Windows, khi stdout không phải
+# console (ghi ra file, chạy nền) Python dùng cp1252 và print() ném lỗi, làm
+# hỏng cả request. Ép UTF-8 để log không bao giờ làm gãy phân tích.
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8", errors="replace")
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware

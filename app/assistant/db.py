@@ -55,21 +55,27 @@ def get_engine():
 
 
 def init_db() -> bool:
+    global _init_error
     engine = get_engine()
     if engine is None:
         return False
     try:
+        from sqlalchemy import text
+
         from app.assistant import models  # noqa: F401
 
-        # pgvector is a PostgreSQL extension, so it must exist before the
-        # vector column/index is created by the application schema.
-        with engine.begin() as connection:
-            from sqlalchemy import text
-            connection.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+        # pgvector chỉ cần cho bảng opinion_chunks (tìm kiếm ngữ nghĩa); các
+        # bảng quan hệ không dùng kiểu vector. Khi Postgres cục bộ chưa cài
+        # pgvector, vẫn bật phần lưu trữ/thống kê, và PgVectorOpinionStore sẽ
+        # tự tắt riêng phần vector.
+        try:
+            with engine.begin() as connection:
+                connection.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+        except Exception as exc:
+            print(f"[V2 DB] pgvector chưa sẵn sàng, tắt tìm kiếm ngữ nghĩa: {str(exc).splitlines()[0]}")
         Base.metadata.create_all(bind=engine)
         return True
     except Exception as exc:
-        global _init_error
         _init_error = str(exc)
         return False
 
