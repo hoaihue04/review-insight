@@ -40,18 +40,15 @@ Dự án giải quyết bằng cách **tách từng ý kiến trong review** (ch
 
 ## 2. Câu hỏi business
 
-| # | Câu hỏi của chủ shop |
+| # | Câu hỏi |
 |---|---|
 | 1 | Khách đang khen và chê ở mức nào? |
 | 2 | Chủ đề nào bị chê nhiều nhất, tính theo số lượng và theo tỷ lệ? |
-| 3 | Sao trung bình trên Tiki có phản ánh đúng trải nghiệm không? |
+| 3 | Sao trung bình có phản ánh đúng trải nghiệm không? |
 | 4 | Vấn đề đang tăng hay giảm, bắt đầu từ khi nào? |
 | 5 | Có tính chu kỳ không (tháng cao điểm, cuối tháng, cuối tuần)? |
 | 6 | Khách cụ thể nói gì, để làm việc với kho hoặc nhà cung cấp? |
 | 7 | Có ai nhắc đến vấn đề an toàn hoặc hàng không chính hãng? |
-| 8 | Hỏi nhanh bằng ngôn ngữ tự nhiên |
-
-Dashboard cố ý **chỉ trình bày dữ liệu, không đưa lời khuyên**. Lời khuyên phụ thuộc vào giá nhập, nhà cung cấp, chính sách của từng cửa hàng; những thứ mà review không cho biết.
 
 ## 3. Phương pháp
 
@@ -100,10 +97,10 @@ Sáu thẻ chỉ số, đọc từ trái sang phải:
 
 | Thẻ | Ý nghĩa |
 |---|---|
-| Review đã phân tích | Số review thực sự đưa vào phân tích, cùng tổng số review của sản phẩm trên Tiki |
+| Review đã phân tích | Số review thực sự đưa vào phân tích, cùng tổng số review của sản phẩm |
 | Tổng ý kiến | Tổng số ý kiến PhoBERT nhận ra, kèm số ý kiến trung bình mỗi review |
 | Tích cực / Trung lập / Tiêu cực | Tỷ lệ ý kiến theo cảm xúc, số ý kiến, và số review chứa chúng. Con số mang màu của cảm xúc |
-| Sao trung bình trên Tiki | Điểm sao của sản phẩm trên trang Tiki. Đây là chỉ số duy nhất không do hệ thống tính |
+| Sao trung bình| Điểm sao của sản phẩm trên trang TMĐT |
 
 ### 4.2 Cảm xúc theo chủ đề
 
@@ -133,7 +130,7 @@ Nút tròn ở góc dưới bên phải mở khung hỏi đáp về chính sản
 
 ## 5. Một ví dụ đọc kết quả
 
-Sản phẩm *Combo 6 gói khăn ướt Bobby Care không hương* (3.040 review trên Tiki, sao trung bình 5,0). Hệ thống phân tích 197 review, nhận ra **497 ý kiến**: 369 tích cực (74%), 23 trung lập (5%), 105 tiêu cực (21%).
+Sản phẩm *Combo 6 gói khăn ướt Bobby Care không hương* (3.040 review, sao trung bình 5,0). Hệ thống phân tích 197 review, nhận ra **497 ý kiến**: 369 tích cực (74%), 23 trung lập (5%), 105 tiêu cực (21%).
 
 **1. Sao 5,0 nhưng vẫn có nhiều lời chê.** 67 trên 197 review (34%) chứa ít nhất một ý kiến tiêu cực, và **33 trong 67 review đó (49%) vẫn chấm 4 đến 5 sao**. Sao trung bình không nhìn thấy được những lời chê này.
 
