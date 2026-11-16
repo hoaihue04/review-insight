@@ -28,6 +28,7 @@ from app.web.product_parser import (
     extract_product_id_from_url,
     split_sentences,
 )
+from app.web.seller_summary import build_seller_summary
 from app.web.tiki_client import fetch_tiki_product_info_live, fetch_tiki_reviews_live
 
 ProgressCallback = Callable[[int, str], None]
@@ -492,6 +493,7 @@ class DashboardService:
                 for r in representative
             ],
             "risk_flags": risk_flags,
+            "seller_summary": build_seller_summary(tuples, reviews_df.to_dict(orient="records")),
         }
         try:
             saved = self._v2_repository.persist_analysis(
