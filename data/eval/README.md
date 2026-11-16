@@ -1,11 +1,11 @@
 # RAGAS Evaluation Dataset
 
-This folder contains evaluation samples generated from local TikiInsight data.
+This folder contains evaluation samples generated from local ReviewInsight data.
 
 Main file:
 
 ```text
-ragas_chat_eval.jsonl
+ragas_chat_eval_ids.jsonl
 ```
 
 Each JSONL row contains:

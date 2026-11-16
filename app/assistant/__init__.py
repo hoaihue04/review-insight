@@ -1,2 +1,2 @@
-"""TikiInsight v2 parent assistant modules."""
+"""ReviewInsight v2 parent assistant modules."""
 

@@ -118,7 +118,7 @@ class StatisticsPlanner:
 
     def _plan_by_llm(self, question: str, query: QueryAnalysis) -> StatisticsQueryPlan | None:
         system_prompt = (
-            "You are a query planner for TikiInsight, a Vietnamese product review analytics system. "
+            "You are a query planner for ReviewInsight, a Vietnamese product review analytics system. "
             "Convert the user question and query analysis into a structured JSON query plan. "
             "Do not write SQL. Return only valid JSON. Do not explain."
         )
