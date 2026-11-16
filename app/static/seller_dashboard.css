@@ -1,0 +1,154 @@
+/* Dashboard chủ shop. Dùng token của style.css. */
+
+.sd-dot { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; flex: none; }
+.sd-empty { padding: var(--s-2) 0; color: var(--text-2); font-size: 14px; text-align: center; }
+
+.sd-head { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; justify-content: space-between; margin-bottom: var(--s-2); }
+.sd-sub { margin-top: 4px; font-size: 14px; color: var(--text-2); line-height: 1.5; }
+.sd-sub strong { color: var(--text-1); font-weight: 600; }
+.sd-caption { margin-top: var(--s-2); font-size: 13px; line-height: 1.5; color: var(--text-3); }
+
+.sd-legend { display: flex; flex-wrap: wrap; gap: var(--s-2); font-size: 13px; color: var(--text-2); }
+.sd-legend span { display: inline-flex; align-items: center; }
+
+/* ── Tổng quan: mỗi chỉ số một ô, có icon ── */
+#sec-overview, #sec-trend { scroll-margin-top: calc(var(--bar-h) + 64px); }
+.kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: var(--s-2); margin-bottom: var(--s-2); }
+.kpi {
+  display: flex; flex-direction: column; gap: 4px;
+  padding: var(--s-2);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  box-shadow: var(--shadow-sm);
+}
+.kpi-top { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; font-size: 13px; font-weight: 500; line-height: 1.3; color: var(--text-2); }
+.kpi-icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 36px; height: 36px; flex: none;
+  border-radius: 10px;
+  background: var(--kpi-soft, var(--accent-soft));
+  color: var(--kpi-ink, var(--accent));
+}
+.kpi-icon .icon { width: 20px; height: 20px; }
+.kpi-val { font-size: 30px; font-weight: 700; line-height: 1.2; letter-spacing: -0.02em; color: var(--text-1); }
+.kpi-sub { font-size: 12px; line-height: 1.4; color: var(--text-3); }
+/* Ô cảm xúc: con số mang màu của cảm xúc (tông đủ đậm để đọc trên nền trắng). */
+.kpi.is-positive .kpi-val, .kpi.is-neutral .kpi-val, .kpi.is-negative .kpi-val { color: var(--kpi-ink); }
+.kpi.is-positive { --kpi-soft: #e3f3e1; --kpi-ink: #008300; }
+.kpi.is-neutral  { --kpi-soft: #eeeeea; --kpi-ink: #5f5e58; }
+.kpi.is-negative { --kpi-soft: #fde9df; --kpi-ink: #c24e1f; }
+
+.sd-split { display: flex; gap: 2px; height: 12px; margin-top: 10px; }
+.sd-seg { min-width: 2px; }
+.sd-seg:first-child { border-radius: 999px 0 0 999px; }
+.sd-seg:last-child  { border-radius: 0 999px 999px 0; }
+
+/* ── Bộ chọn ── */
+.sd-controls { display: flex; flex-wrap: wrap; gap: var(--s-1) var(--s-3); align-items: center; margin-bottom: var(--s-2); }
+.sd-control { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.sd-control > label, .sd-control-label { margin-right: 4px; font-size: 13px; color: var(--text-2); }
+.sd-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.sd-chip {
+  display: inline-flex; align-items: center;
+  min-height: 36px; padding: 0 12px;
+  border: 1px solid var(--line-2); border-radius: var(--r-sm);
+  background: var(--surface); color: var(--text-1);
+  font-size: 13px; font-weight: 500;
+  cursor: pointer;
+}
+.sd-chip:hover { border-color: var(--accent); }
+.sd-chip[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 600; }
+.sd-chip:disabled { opacity: .45; cursor: default; border-color: var(--line-2); }
+
+.sd-input, .sd-select {
+  min-height: 36px; padding: 0 12px;
+  border: 1px solid var(--line-2); border-radius: var(--r-sm);
+  background: var(--surface); color: var(--text-1);
+  font-size: 13px;
+}
+.sd-input { width: 220px; max-width: 100%; }
+
+.sd-filter-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  min-height: 32px; padding: 0 8px 0 12px;
+  border: 0; border-radius: 999px;
+  background: var(--accent-soft); color: var(--accent);
+  font-size: 13px; font-weight: 600;
+  cursor: pointer;
+}
+.sd-filter-chip .icon { width: 14px; height: 14px; }
+
+/* ── Cảm xúc theo chủ đề ── */
+.sd-topic-row {
+  display: grid; grid-template-columns: 240px minmax(0, 1fr) 150px; gap: 12px; align-items: center;
+  width: 100%; padding: 8px;
+  border: 0; border-radius: var(--r-sm); background: transparent;
+  text-align: left; cursor: pointer;
+}
+.sd-topic-row:hover { background: var(--surface-2); }
+.sd-topic-row.is-active { background: var(--accent-soft); }
+.sd-topic-name { font-size: 14px; font-weight: 500; color: var(--text-1); }
+.sd-bar { display: flex; gap: 2px; height: 16px; }
+.sd-bar-seg { height: 16px; min-width: 2px; }
+.sd-bar-seg:last-child { border-radius: 0 4px 4px 0; }
+.sd-topic-val { display: flex; justify-content: flex-end; gap: 10px; font-size: 13px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.sd-topic-val span { min-width: 34px; text-align: right; }
+.sd-topic-val .is-key { color: var(--text-1); font-weight: 700; }
+.sd-topic-row.is-low .sd-bar { opacity: .45; }
+.sd-topic-row.is-low .sd-topic-name { color: var(--text-3); }
+.sd-topic-row.is-low .sd-topic-name::after { content: " · ít dữ liệu"; font-weight: 400; font-size: 12px; }
+
+/* ── Xu hướng ── */
+.sd-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: var(--s-2); }
+.sd-row > .panel { min-width: 0; }
+
+.sd-cols { display: grid; grid-template-columns: repeat(var(--sd-cols, 6), minmax(0, 1fr)); gap: 10px; }
+.sd-col { display: flex; flex-direction: column; gap: 2px; height: 220px; }
+.sd-col.is-low { opacity: .4; }
+.sd-col-seg { display: flex; align-items: center; justify-content: center; min-height: 2px; font-size: 12px; font-weight: 600; overflow: hidden; }
+.sd-col-seg:first-child { border-radius: 4px 4px 0 0; }
+
+.sd-vol { align-items: end; height: 28px; margin-top: var(--s-1); padding-top: var(--s-1); border-top: 1px solid var(--line-2); }
+.sd-vol span { display: block; min-height: 2px; background: var(--line-2); border-radius: 2px 2px 0 0; }
+.sd-axis { margin-top: 6px; text-align: center; }
+.sd-axis strong { display: block; font-size: 13px; font-weight: 600; color: var(--text-1); }
+.sd-axis span { display: block; font-size: 11px; color: var(--text-3); }
+
+/* Nhiều cột (31 ngày trong tháng): thu khoảng cách, bỏ nhãn trong cột. */
+.sd-cols.is-dense { gap: 3px; }
+.sd-cols.is-dense .sd-col-seg { font-size: 0; }
+.sd-cols.is-dense.sd-axis strong { font-size: 11px; font-weight: 500; }
+.sd-cols.is-dense.sd-axis span { display: none; }
+
+.sd-trend-bar { margin: var(--s-1) 0 var(--s-2); }
+
+.sd-heat-wrap { overflow-x: auto; }
+.sd-heat-table { width: 100%; border-collapse: separate; border-spacing: 2px; font-size: 13px; font-variant-numeric: tabular-nums; }
+.sd-heat-table thead th { padding-bottom: 4px; font-size: 12px; font-weight: 400; color: var(--text-3); }
+.sd-heat-table tbody th { padding-right: 10px; text-align: left; font-weight: 500; color: var(--text-1); white-space: nowrap; }
+.sd-heat-table td { min-width: 26px; padding: 9px 2px; text-align: center; border-radius: 4px; }
+.sd-heat-table td.sd-heat-zero { background: var(--surface-2); color: var(--text-3); }
+
+/* ── Khách nói gì ── */
+.sd-table-scroll { overflow-x: auto; }
+.sd-table { width: 100%; min-width: 720px; border-collapse: collapse; font-size: 14px; }
+.sd-table th { padding: 10px 12px; border-bottom: 1px solid var(--line-2); text-align: left; font-size: 12px; font-weight: 600; color: var(--text-2); }
+.sd-table td { padding: 12px; border-bottom: 1px solid var(--line); vertical-align: top; color: var(--text-1); }
+.sd-table tbody tr:hover td { background: var(--surface-2); }
+.sd-td-topic { width: 200px; font-weight: 500; }
+.sd-td-sent { width: 120px; white-space: nowrap; }
+.sd-td-text { line-height: 1.55; }
+.sd-td-text mark { background: #fde68a; color: inherit; border-radius: 2px; padding: 0 1px; }
+.sd-td-num { width: 96px; white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--text-2); }
+.sd-table-foot { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; margin-top: var(--s-2); font-size: 13px; color: var(--text-2); }
+
+@media (max-width: 720px) {
+  .kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .kpi-val { font-size: 24px; }
+  .sd-topic-row { grid-template-columns: 1fr; gap: 4px; }
+  .sd-topic-val { justify-content: flex-start; }
+  .sd-row { grid-template-columns: 1fr; }
+  .sd-input { width: 100%; }
+}

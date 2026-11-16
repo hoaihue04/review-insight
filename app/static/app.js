@@ -1,127 +1,55 @@
 "use strict";
-let stackedChart = null;
-let radarChart   = null;
+// Khung trang: chuyển màn hình, tiến trình phân tích, thẻ sản phẩm, chatbot.
+// Phần dashboard nằm ở seller_dashboard.js.
+
 let currentProductId = null;
 
-// ─── Aspect Vietnamese map ─────────────────────────────────────────────────
-const ASPECT_VI = {
-  "PRODUCT#QUALITY":      "Chất lượng tổng thể",
-  "PRODUCT#MATERIAL":     "Chất liệu",
-  "PRODUCT#COMFORT":      "Cảm giác sử dụng",
-  "PRODUCT#SIZE":         "Kích thước / độ vừa vặn",
-  "PRODUCT#DESIGN":       "Thiết kế & kiểu dáng",
-  "PRODUCT#SAFETY":       "Mức độ an toàn",
-  "PRODUCT#FUNCTION":     "Tính năng & công dụng",
-  "PRODUCT#DURABILITY":   "Độ bền",
-  "PRODUCT#VALUE":        "Giá trị so với giá tiền",
-
-  "PRICE#AFFORDABILITY":  "Mức giá",
-  "PRICE#DISCOUNT":       "Ưu đãi & khuyến mãi",
-
-  "DELIVERY#SPEED":       "Tốc độ giao hàng",
-  "DELIVERY#PACKAGING":   "Chất lượng đóng gói",
-  "DELIVERY#ACCURACY":    "Độ chính xác đơn hàng",
-
-  "SELLER#SERVICE":       "Chất lượng dịch vụ của shop",
-  "SELLER#RESPONSIVENESS":"Mức độ phản hồi của shop",
-  "SELLER#AUTHENTICITY":  "Độ tin cậy / chính hãng",
-};
-
-const ASPECT_ICON = {
-  "PRODUCT#QUALITY":      "🧵",
-  "PRODUCT#MATERIAL":     "🪡",
-  "PRODUCT#COMFORT":      "😌",
-  "PRODUCT#SIZE":         "📐",
-  "PRODUCT#DESIGN":       "🎨",
-  "PRODUCT#SAFETY":       "🛡️",
-  "PRODUCT#FUNCTION":     "⚙️",
-  "PRODUCT#DURABILITY":   "💪",
-  "PRODUCT#VALUE":        "💰",
-  "PRICE#AFFORDABILITY":  "🏷️",
-  "PRICE#DISCOUNT":       "🎫",
-  "DELIVERY#SPEED":       "🚚",
-  "DELIVERY#PACKAGING":   "📦",
-  "DELIVERY#ACCURACY":    "✅",
-  "SELLER#SERVICE":       "🛒",
-  "SELLER#RESPONSIVENESS":"💬",
-  "SELLER#AUTHENTICITY":  "🔐",
-};
-
-// ─── Debug flag ────────────────────────────────────────────────────────────
-const DEBUG = true;
-
-function debugLog(...args) {
-    if (DEBUG) {
-        console.log("[DEBUG]", ...args);
-    }
-}
-
-// ─── Image proxy helper ────────────────────────────────────────────────────
-function proxyImg(url) {
-  if (!url) return "";
-  return `/api/proxy-image?url=${encodeURIComponent(url)}`;
-}
-
-function aspectVi(raw) {
-  if (!raw) return "—";
-  return ASPECT_VI[raw] || raw.replace(/.*#/, "");
-}
-
-function aspectIcon(raw) {
-  return ASPECT_ICON[raw] || "📋";
-}
-
-// ─── Formatters ────────────────────────────────────────────────────────────
-function fmtNum(v) {
-  if (v == null || typeof v !== "number" || Number.isNaN(v)) return "—";
-  return v.toLocaleString("vi-VN");
-}
-function fmtPct(v) {
-  if (v == null || typeof v !== "number" || Number.isNaN(v)) return "—";
-  return `${(v * 100).toFixed(1)}%`;
-}
-function fmtScore(v, decimals = 3) {
-  return (v != null && typeof v === "number" && !Number.isNaN(v))
-    ? v.toFixed(decimals) : "—";
-}
-function safeFixed(v, d = 1) {
-  return (v != null && !Number.isNaN(Number(v))) ? Number(v).toFixed(d) : "—";
-}
-function fmtPrice(v) {
-  if (!v || isNaN(Number(v)) || Number(v) === 0) return null;
-  return Number(v).toLocaleString("vi-VN") + " ₫";
-}
+// ─── Tiện ích ──────────────────────────────────────────────────────────────
 function escHtml(s) {
-  return String(s || "")
+  return String(s == null ? "" : s)
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
-// ─── Progress ring ─────────────────────────────────────────────────────────
-function setProgress(pct, msg, sub) {
-  const CIRCUMFERENCE = 213.6;
-  const circle = document.getElementById("ring-circle");
-  if (!circle) return;
-  const offset = CIRCUMFERENCE - (Math.min(pct, 100) / 100) * CIRCUMFERENCE;
-  circle.style.strokeDashoffset = offset;
-  document.getElementById("progress-pct").textContent = `${Math.round(pct)}%`;
-  document.getElementById("progress-bar").style.width = `${Math.min(pct, 100)}%`;
-  if (msg) document.getElementById("loading-step").textContent = msg;
-  if (sub !== undefined && sub !== "") document.getElementById("loading-sub").textContent = sub;
+// Tiki chặn hotlink ảnh nên phải đi qua proxy của server.
+function proxyImg(url) {
+  return url ? `/api/proxy-image?url=${encodeURIComponent(url)}` : "";
 }
 
-// ─── Helpers: trích tên sản phẩm từ URL Tiki ──────────────────────────────
-function extractNameFromUrl(url) {
-  if (!url) return "";
-  const m = url.match(/tiki\.vn\/(.+?)-p\d+/);
-  if (!m) return "";
-  return m[1]
-    .split("-")
-    .map(w => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(" ")
-    .replace(/\s+/g, " ")
-    .trim();
+// ─── Màn hình: trang chủ / đang phân tích / kết quả ────────────────────────
+function setView(view) {
+  document.getElementById("landing").classList.toggle("hidden", view !== "landing");
+  document.getElementById("loading-view").classList.toggle("hidden", view !== "loading");
+  document.getElementById("result-root").classList.toggle("hidden", view !== "result");
+  document.getElementById("chat-fab").classList.toggle("hidden", view !== "result");
+  if (view !== "result") setChatOpen(false);
+}
+
+function showError(message) {
+  document.getElementById("error-text").textContent = message;
+  document.getElementById("error-banner").classList.remove("hidden");
+}
+function hideError() {
+  document.getElementById("error-banner").classList.add("hidden");
+}
+
+// ─── Tiến trình phân tích ──────────────────────────────────────────────────
+// Mốc phần trăm khớp với các bước server báo về trong DashboardService.
+function setProgress(pct, msg) {
+  const value = Math.max(0, Math.min(100, Number(pct) || 0));
+  document.getElementById("load-bar").style.width = `${value}%`;
+  document.getElementById("load-bar-wrap").setAttribute("aria-valuenow", String(Math.round(value)));
+  document.getElementById("load-pct").textContent = `${Math.round(value)}%`;
+  if (msg) document.getElementById("load-msg").textContent = msg;
+
+  const active = value < 30 ? 1 : value < 82 ? 2 : 3;
+  document.querySelectorAll("#load-steps li").forEach(li => {
+    const step = Number(li.dataset.step);
+    li.classList.toggle("is-done", step < active);
+    li.classList.toggle("is-active", step === active);
+  });
 }
 
 // ─── Render: Product Hero ──────────────────────────────────────────────────
@@ -272,370 +200,27 @@ function swapMainImg(thumbEl, newSrc) {
   thumbEl.classList.add("active");
 }
 
-// ─── Render: Metrics Strip ─────────────────────────────────────────────────
-function renderMetrics(data) {
-  const m       = data.metrics || {};
-  const opinions = data.opinion_table || [];
+// ─── Chatbot ───────────────────────────────────────────────────────────────
+function setChatOpen(open) {
+  const panel = document.getElementById("chat-panel");
+  const fab = document.getElementById("chat-fab");
+  panel.classList.toggle("hidden", !open);
+  document.body.classList.toggle("chat-open", open);
+  fab.setAttribute("aria-expanded", String(open));
+  fab.setAttribute("aria-label", open ? "Đóng trợ lý review" : "Mở trợ lý review");
+  if (open) document.getElementById("chat-question").focus();
+}
 
-  let posCount = 0, neuCount = 0, negCount = 0;
-  if (opinions.length) {
-    opinions.forEach(r => {
-      if (r.sentiment === "positive") posCount += (r.count || 1);
-      else if (r.sentiment === "negative") negCount += (r.count || 1);
-      else neuCount += (r.count || 1);
-    });
+function resetChatFor(data) {
+  const nextId = (data.product_info || {}).product_id || null;
+  if (nextId !== currentProductId) {
+    // Sản phẩm mới: xóa hội thoại cũ để câu trả lời không lẫn sản phẩm.
+    document.getElementById("chat-output").innerHTML =
+      '<div class="assistant-message muted">Hãy đặt câu hỏi về review của sản phẩm đang xem.</div>';
   }
-  const total  = posCount + neuCount + negCount || 1;
-  const posPct = m.positive_ratio != null
-    ? (m.positive_ratio * 100).toFixed(1)
-    : ((posCount / total) * 100).toFixed(1);
-  const neuPct = m.neutral_ratio != null
-    ? (m.neutral_ratio  * 100).toFixed(1)
-    : ((neuCount / total) * 100).toFixed(1);
-  const negPct = m.negative_ratio != null
-    ? (m.negative_ratio * 100).toFixed(1)
-    : ((negCount / total) * 100).toFixed(1);
-
-  const METRICS_DEF = [
-    { val: fmtNum(m.total_reviews_used),    label: "Tổng review",  accent: "#2563eb" },
-    { val: fmtNum(m.num_aspects_mentioned), label: "Khía cạnh",    accent: "#0891b2" },
-    { val: posPct + "%",                    label: "😊 Tích cực",  accent: "#059669" },
-    { val: neuPct + "%",                    label: "😐 Trung lập", accent: "#d97706" },
-    { val: negPct + "%",                    label: "😞 Tiêu cực",  accent: "#dc2626" },
-  ];
-
-  document.getElementById("metrics-grid").innerHTML = METRICS_DEF
-    .map(({ val, label, accent }, i) => `
-      <div class="metric-card" style="--accent:${accent}; animation-delay:${i * 60}ms">
-        <div class="metric-label">${label}</div>
-        <div class="metric-val">${val}</div>
-      </div>
-    `).join("");
+  currentProductId = nextId;
 }
 
-// ─── Render: Charts ────────────────────────────────────────────────────────
-const CHART_DEFAULTS = {
-  color: "#64748b",
-  grid:  { color: "rgba(0,0,0,0.05)", drawTicks: false },
-  font:  { family: "'Be Vietnam Pro', sans-serif", size: 11 },
-};
-
-function renderCharts(data) {
-  const aspect   = data.aspect || {};
-  const rows     = (aspect.table || []);
-  const radar    = (aspect.radar || []);
-
-  const mentionedRows  = rows.filter(r => (r.positive || 0) + (r.neutral || 0) + (r.negative || 0) > 0);
-  const mentionedRadar = radar.filter(r => r.score != null && r.score > 0);
-
-  const radarLabels      = mentionedRadar.map(r => aspectVi(r.aspect));
-  const currentScores    = mentionedRadar.map(r => r.score || 0.5);
-
-  if (stackedChart) { stackedChart.destroy(); stackedChart = null; }
-  if (radarChart)   { radarChart.destroy();   radarChart   = null; }
-
-  // Stacked bar chart
-  const ctx1 = document.getElementById("aspectStackedChart").getContext("2d");
-  stackedChart = new Chart(ctx1, {
-    type: "bar",
-    data: {
-      labels: mentionedRows.map(r => aspectVi(r.aspect)),
-      datasets: [
-        { label: "Tích cực", data: mentionedRows.map(r => r.positive || 0),
-          backgroundColor: "rgba(5,150,105,.7)",  borderRadius: 3 },
-        { label: "Trung lập", data: mentionedRows.map(r => r.neutral  || 0),
-          backgroundColor: "rgba(217,119,6,.65)", borderRadius: 3 },
-        { label: "Tiêu cực", data: mentionedRows.map(r => r.negative  || 0),
-          backgroundColor: "rgba(220,38,38,.65)", borderRadius: 3 },
-      ],
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      plugins: {
-        legend: {
-          labels: { color: CHART_DEFAULTS.color, font: CHART_DEFAULTS.font,
-                    boxWidth: 10, boxHeight: 10, padding: 16 },
-        },
-        tooltip: { mode: "index", intersect: false },
-      },
-      scales: {
-        x: { stacked: true, ticks: { color: CHART_DEFAULTS.color, font: CHART_DEFAULTS.font }, grid: CHART_DEFAULTS.grid },
-        y: { stacked: true, ticks: { color: CHART_DEFAULTS.color, font: CHART_DEFAULTS.font }, grid: CHART_DEFAULTS.grid },
-      },
-    },
-  });
-
-  // Radar chart
-  const ctx2 = document.getElementById("aspectRadarChart").getContext("2d");
-  const currentName    = data.product_info?.name || "Sản phẩm này";
-  const shortCurrName  = currentName.length > 25 ? currentName.substring(0, 22) + "..." : currentName;
-
-  radarChart = new Chart(ctx2, {
-    type: "radar",
-    data: {
-      labels: radarLabels,
-      datasets: [
-        {
-          label: `📊 ${shortCurrName}`,
-          data: currentScores,
-          borderColor: "#2563eb",
-          backgroundColor: "rgba(37,99,235,.08)",
-          pointBackgroundColor: "#2563eb",
-          pointBorderColor: "#fff",
-          pointRadius: 4,
-          borderWidth: 2.5,
-        },
-      ],
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      plugins: {
-        legend: {
-          position: "bottom",
-          labels: { color: CHART_DEFAULTS.color,
-                    font: { size: 10, family: CHART_DEFAULTS.font.family },
-                    usePointStyle: true, boxWidth: 8 },
-        },
-        tooltip: {
-          callbacks: {
-            label: (ctx) =>
-              `${ctx.dataset.label || ""}: ${(ctx.raw * 5).toFixed(1)}/5 điểm`,
-          },
-        },
-      },
-      scales: {
-        r: {
-          min: 0, max: 1,
-          ticks: {
-            color: CHART_DEFAULTS.color, font: CHART_DEFAULTS.font,
-            backdropColor: "transparent", stepSize: 0.25,
-            callback: (val) => (val * 5).toFixed(0),
-          },
-          grid:        { color: "rgba(0,0,0,0.07)" },
-          pointLabels: { color: CHART_DEFAULTS.color, font: { ...CHART_DEFAULTS.font, size: 10 } },
-          angleLines:  { color: "rgba(0,0,0,0.06)" },
-        },
-      },
-    },
-  });
-}
-
-// ─── Render: Strengths / Weaknesses ───────────────────────────────────────
-function renderSW(data) {
-  const aspect = data.aspect || {};
-
-  function swHtml(items, type) {
-    if (!items || !items.length) {
-      return `<li style="color:var(--text-3);padding:12px">Không có dữ liệu</li>`;
-    }
-    return items.map(r => {
-      let quoteText = "";
-      let likeCount = 0;
-
-      if (type === "positive") {
-        quoteText = r.best_positive_quote || "";
-        likeCount = r.best_positive_quote_count || 0;
-      } else {
-        quoteText = r.best_negative_quote || "";
-        likeCount = r.best_negative_quote_count || 0;
-      }
-
-      if (!quoteText || quoteText === "nan" || quoteText === "None") quoteText = "";
-
-      let likeHtml = "";
-      if (quoteText) {
-        if (likeCount > 0) {
-          likeHtml = `<span class="like-count">👍 ${likeCount} người thấy hữu ích</span>`;
-        } else {
-          likeHtml = `<span class="like-count" style="background:var(--blue-dim);color:var(--blue)">⭐ Độ tin cậy cao</span>`;
-        }
-      }
-
-      const negCount = r.negative || 0;
-      const posCount = r.positive || 0;
-      const subInfo  = type === "negative"
-        ? (negCount > 0 ? `😞 ${negCount} đánh giá tiêu cực · ` : "")
-        : (posCount > 0 ? `😊 ${posCount} đánh giá tích cực · ` : "");
-
-      return `
-        <li class="sw-item">
-          <div class="sw-item-header">
-            <span class="sw-aspect">${aspectIcon(r.aspect)} ${aspectVi(r.aspect)}</span>
-          </div>
-          ${quoteText
-            ? `<div class="sw-quote">
-                 <span class="quote-icon">💬</span>
-                 "${escHtml(quoteText)}"
-               </div>
-               <div class="sw-meta">${likeHtml}</div>`
-            : `<div class="sw-quote" style="font-style:normal;color:var(--text-3);font-size:12px">
-                 📝 Chưa trích xuất được bình luận tiêu biểu
-               </div>`
-          }
-          <div class="sw-conf">${subInfo}📊 ${r.mentions || 0} lượt nhắc đến</div>
-        </li>
-      `;
-    }).join("");
-  }
-
-  const strengths  = aspect.strengths  || [];
-  const weaknesses = aspect.weaknesses || [];
-
-  document.getElementById("strength-list").innerHTML  = swHtml(strengths,  "positive");
-  document.getElementById("weakness-list").innerHTML  = weaknesses.length
-    ? swHtml(weaknesses, "negative")
-    : `<li style="color:var(--text-3);padding:12px;font-size:13px">✅ Không tìm thấy điểm yếu đáng kể</li>`;
-}
-
-// ─── Render: Opinion Table ─────────────────────────────────────────────────
-function sentLabel(s) {
-  return s === "positive" ? "Tích cực" : s === "negative" ? "Tiêu cực" : "Trung lập";
-}
-
-function renderOpinion(data) {
-  const table = (data.opinion_table || []).slice(0, 30);
-  if (!table.length) {
-    document.getElementById("opinion-body").innerHTML =
-      `<td><td colspan="6" style="color:var(--text-3);text-align:center;padding:20px">Không có dữ liệu</td></tr>`;
-    return;
-  }
-
-  document.getElementById("opinion-body").innerHTML = table.map((r, i) => {
-    const conf         = ((r.confidence || 0) * 100).toFixed(0);
-    const cnt          = r.count ?? r.cnt ?? "—";
-    const aspectCode   = r.aspect || "—";
-    const aspectMeaning = aspectVi(aspectCode);
-    const aspectIconChar = aspectIcon(aspectCode);
-
-    return `
-      <tr>
-        <td>${String(i + 1).padStart(2, "0")}</td>
-        <td>
-          <div class="aspect-code">${aspectIconChar} ${aspectCode}</div>
-        </td>
-        <td>
-          <div class="aspect-meaning">${aspectMeaning}</div>
-        </td>
-        <td><span class="sentiment-tag ${r.sentiment}">${sentLabel(r.sentiment)}</span></td>
-        <td>
-          <div class="score-bar-wrap">
-            <div class="score-bar">
-              <div class="score-bar-fill" style="width:${conf}%"></div>
-            </div>
-            <span style="font-family:var(--font-mono);font-size:11px;color:var(--text-3);min-width:32px">
-              ${conf}%
-            </span>
-          </div>
-        </td>
-        <td style="font-family:var(--font-mono);color:var(--text-3);text-align:center">${cnt}</td>
-      </tr>
-    `;
-  }).join("");
-}
-
-// ─── Render: Representative Reviews ───────────────────────────────────────
-const REVIEW_AVATARS = {
-  positive: ["😊", "🥰", "😄"],
-  negative: ["😟", "😤", "😞"],
-  neutral:  ["🤔", "😐", "🙂"],
-};
-
-function renderReviews(data) {
-  const reviews = data.representative_reviews || [];
-  const types   = ["Tích cực nhất", "Tiêu cực nhất", "Ngẫu nhiên"];
-
-  if (!reviews.length) {
-    document.getElementById("review-cards").innerHTML =
-      `<p style="color:var(--text-3)">Không có đánh giá tiêu biểu.</p>`;
-    return;
-  }
-
-  document.getElementById("review-cards").innerHTML = reviews.map((r, i) => {
-    const sentiment   = r.label || "neutral";
-    const starCount   = r.rating || (sentiment === "positive" ? 5 : sentiment === "negative" ? 2 : 3);
-    const stars = Array.from({ length: 5 }, (_, si) =>
-      `<span class="star ${si < starCount ? "on" : "off"}">★</span>`
-    ).join("");
-    const avatarEmoji = (REVIEW_AVATARS[sentiment] || REVIEW_AVATARS.neutral)[i % 3];
-    const reviewText  = r.text && r.text !== "nan" ? r.text : "Không có nội dung đánh giá.";
-
-    return `
-      <article class="review-card ${sentiment}">
-        <div class="review-card-header">
-          <div class="review-avatar">${avatarEmoji}</div>
-          <div class="review-meta">
-            <div class="review-type">${types[i] || "Đánh giá"}  ·  ${sentLabel(sentiment)}</div>
-            <div class="review-stars">${stars}</div>
-          </div>
-        </div>
-        <div class="review-text">${escHtml(reviewText)}</div>
-      </article>
-    `;
-  }).join("");
-}
-
-function setActiveTab(tabId) {
-  document.querySelectorAll(".audience-tab").forEach(btn => {
-    btn.classList.toggle("active", btn.dataset.tab === tabId);
-  });
-  document.querySelectorAll(".tab-panel").forEach(panel => {
-    panel.classList.toggle("active", panel.id === tabId);
-  });
-}
-
-function renderParentAssistant(data) {
-  const pi = data.product_info || {};
-  currentProductId = pi.product_id || null;
-}
-
-async function askAssistant(question) {
-  if (!currentProductId) {
-    alert("Hãy phân tích sản phẩm trước khi hỏi trợ lý.");
-    return;
-  }
-  const output = document.getElementById("chat-output");
-  if (!output) return;
-  const pendingId = `chat-pending-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  output.insertAdjacentHTML("beforeend", `<div class="user-message">${escHtml(question)}</div>`);
-  output.insertAdjacentHTML("beforeend", `<div class="assistant-message muted" id="${pendingId}">Đang tìm bằng chứng...</div>`);
-  output.scrollTop = output.scrollHeight;
-
-  try {
-    const resp = await fetch("/api/assistant/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ product_id: currentProductId, question, use_llm: true }),
-    });
-    const pending = document.getElementById(pendingId);
-    if (pending) pending.remove();
-    if (!resp.ok) {
-      let msg = "Không thể trả lời câu hỏi này";
-      try { msg = (await resp.json()).detail || msg; } catch (_) {}
-      throw new Error(msg);
-    }
-    const data = await resp.json();
-    const citations = (data.structured_answer && data.structured_answer.citations && data.structured_answer.citations.length)
-      ? data.structured_answer.citations
-      : (data.evidence || []).map(e => ({ aspect: e.aspect_label || e.aspect || "Bằng chứng", evidence: e.text || "" }));
-    const evidenceHtml = citations.slice(0, 3).map(e =>
-      `<li><span>${escHtml(aspectLabel(e.aspect || "Bằng chứng"))}</span>${escHtml((e.evidence || "").slice(0, 180))}</li>`
-    ).join("");
-    output.insertAdjacentHTML("beforeend", `
-      <div class="assistant-message">
-        <p>${answerHtml(data.answer || "Chưa có câu trả lời.")}</p>
-        ${evidenceHtml ? `<div class="chat-evidence-title">Bằng chứng tham khảo</div><ul class="chat-evidence">${evidenceHtml}</ul>` : ""}
-      </div>
-    `);
-  } catch (err) {
-    const pending = document.getElementById(pendingId);
-    if (pending) pending.remove();
-    output.insertAdjacentHTML("beforeend", `<div class="assistant-message error">${escHtml(err.message)}</div>`);
-  } finally {
-    output.scrollTop = output.scrollHeight;
-  }
-}
-
-// ─── Analyze with SSE progress ─────────────────────────────────────────────
 function answerHtml(text) {
   return escHtml(text).replace(/\n/g, "<br>");
 }
@@ -661,135 +246,171 @@ function aspectLabel(aspect) {
   return labels[aspect] || aspect;
 }
 
-function riskLabel(risk) {
-  const labels = {
-    safety: "Độ an toàn",
-    authenticity: "Tính chính hãng",
-    material: "Chất liệu",
-    size_fit: "Kích thước",
-    durability: "Độ bền",
-    delivery_packaging: "Bao bì",
-    delivery_accuracy: "Giao đúng/đủ hàng",
-  };
-  return labels[risk] || risk;
-}
-
-async function analyze() {
-  const url = document.getElementById("product-url").value.trim();
-  if (!url) { alert("Vui lòng nhập link sản phẩm Tiki"); return; }
-
-  const btn = document.getElementById("analyze-btn");
-  btn.disabled = true;
-
-  document.getElementById("loading-overlay").classList.remove("hidden");
-  document.getElementById("result-root").classList.add("hidden");
-  setProgress(0, "Gửi yêu cầu tới server...", "Đang kết nối");
-
-  let es = null;
+async function askAssistant(question) {
+  if (!currentProductId) {
+    showError("Hãy phân tích một sản phẩm trước khi hỏi trợ lý.");
+    return;
+  }
+  const output = document.getElementById("chat-output");
+  const pendingId = `chat-pending-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  output.insertAdjacentHTML("beforeend", `<div class="user-message">${escHtml(question)}</div>`);
+  output.insertAdjacentHTML("beforeend", `<div class="assistant-message muted" id="${pendingId}">Đang tìm bằng chứng...</div>`);
+  output.scrollTop = output.scrollHeight;
 
   try {
-    const startResp = await fetch("/api/analyze/start", {
-      method:  "POST",
+    const resp = await fetch("/api/assistant/chat", {
+      method: "POST",
       headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify({ product_url: url }),
+      body: JSON.stringify({ product_id: currentProductId, question, use_llm: true }),
     });
+    if (!resp.ok) {
+      let msg = "Không thể trả lời câu hỏi này";
+      try { msg = (await resp.json()).detail || msg; } catch (_) {}
+      throw new Error(msg);
+    }
+    const data = await resp.json();
+    const structured = data.structured_answer || {};
+    const citations = (structured.citations && structured.citations.length)
+      ? structured.citations
+      : (data.evidence || []).map(e => ({ aspect: e.aspect_label || e.aspect || "Bằng chứng", evidence: e.text || "" }));
+    const evidenceHtml = citations.slice(0, 3).map(e =>
+      `<li><span>${escHtml(aspectLabel(e.aspect || "Bằng chứng"))}</span>${escHtml((e.evidence || "").slice(0, 180))}</li>`
+    ).join("");
+    document.getElementById(pendingId)?.remove();
+    output.insertAdjacentHTML("beforeend", `
+      <div class="assistant-message">
+        <p>${answerHtml(data.answer || "Chưa có câu trả lời.")}</p>
+        ${evidenceHtml ? `<div class="chat-evidence-title">Bằng chứng tham khảo</div><ul class="chat-evidence">${evidenceHtml}</ul>` : ""}
+      </div>`);
+  } catch (err) {
+    document.getElementById(pendingId)?.remove();
+    output.insertAdjacentHTML("beforeend", `<div class="assistant-message error">${escHtml(err.message)}</div>`);
+  } finally {
+    output.scrollTop = output.scrollHeight;
+  }
+}
 
+// ─── Phân tích (tiến trình qua SSE) ────────────────────────────────────────
+async function analyze() {
+  const url = document.getElementById("product-url").value.trim();
+  if (!url) {
+    showError("Hãy dán link sản phẩm Tiki vào ô phía trên.");
+    document.getElementById("product-url").focus();
+    return;
+  }
+
+  const btn = document.getElementById("analyze-btn");
+  const previousView = document.getElementById("result-root").classList.contains("hidden") ? "landing" : "result";
+  btn.disabled = true;
+  hideError();
+  setProgress(0, "Gửi yêu cầu tới server");
+  setView("loading");
+  document.getElementById("loading-view").scrollIntoView({ block: "start" });
+
+  let es = null;
+  try {
+    const startResp = await fetch("/api/analyze/start", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ product_url: url }),
+    });
     if (!startResp.ok) {
       let errMsg = "Không thể bắt đầu phân tích";
       try { errMsg = (await startResp.json()).detail || errMsg; } catch (_) {}
       throw new Error(errMsg);
     }
-
     const { job_id } = await startResp.json();
 
-    await new Promise((resolve, reject) => {
+    const data = await new Promise((resolve, reject) => {
       es = new EventSource(`/api/analyze/progress/${job_id}`);
-
       const timeout = setTimeout(() => {
-        es.close();
-        reject(new Error("Phân tích quá thời gian (5 phút). Vui lòng thử lại."));
+        reject(new Error("Phân tích quá 5 phút. Hãy thử lại."));
       }, 5 * 60 * 1000);
 
       es.onmessage = (event) => {
         let payload;
         try { payload = JSON.parse(event.data); } catch (_) { return; }
-
-        setProgress(payload.progress ?? 0, payload.message ?? "", "");
-
+        setProgress(payload.progress ?? 0, payload.message ?? "");
         if (payload.status === "done") {
           clearTimeout(timeout);
-          es.close();
-          renderAll(payload.data);
-          resolve();
+          resolve(payload.data);
         } else if (payload.status === "error") {
           clearTimeout(timeout);
-          es.close();
           reject(new Error(payload.error || "Lỗi không xác định từ server"));
         }
       };
-
       es.onerror = () => {
         clearTimeout(timeout);
-        es.close();
-        reject(new Error("Mất kết nối SSE với server. Vui lòng kiểm tra server đang chạy."));
+        reject(new Error("Mất kết nối với server. Hãy kiểm tra server còn chạy không."));
       };
     });
 
+    renderAll(data);
   } catch (err) {
-    alert(`Lỗi: ${err.message}`);
+    setView(previousView);
+    showError(`Không phân tích được: ${err.message}`);
   } finally {
     if (es) { try { es.close(); } catch (_) {} }
-    document.getElementById("loading-overlay").classList.add("hidden");
     btn.disabled = false;
   }
 }
 
-// ─── Event Listeners ────────────────────────────────────────────────────────
-document.getElementById("analyze-btn").addEventListener("click", analyze);
-document.getElementById("product-url").addEventListener("keydown", (e) => {
-  if (e.key === "Enter") analyze();
+function renderAll(data) {
+  if (!data) throw new Error("Server không trả về dữ liệu");
+  renderHeader(data);
+  resetChatFor(data);
+  renderSellerDashboard(data);
+  setView("result");
+  document.getElementById("result-root").scrollIntoView({ block: "start" });
+  updateActiveSection();
+}
+
+// ─── Điều hướng trong trang ────────────────────────────────────────────────
+const navLinks = Array.from(document.querySelectorAll(".section-nav a"));
+function updateActiveSection() {
+  const offset = 90; // chiều cao thanh điều hướng dính
+  let current = navLinks[0];
+  for (const a of navLinks) {
+    const section = document.querySelector(a.getAttribute("href"));
+    if (section && section.getBoundingClientRect().top - offset <= 0) current = a;
+  }
+  navLinks.forEach(a => a.classList.toggle("is-active", a === current));
+}
+let scrollTicking = false;
+window.addEventListener("scroll", () => {
+  if (scrollTicking) return;
+  scrollTicking = true;
+  requestAnimationFrame(() => { updateActiveSection(); scrollTicking = false; });
+}, { passive: true });
+
+// ─── Sự kiện ───────────────────────────────────────────────────────────────
+document.getElementById("search-form").addEventListener("submit", (e) => {
+  e.preventDefault();
+  analyze();
+});
+document.getElementById("error-close").addEventListener("click", hideError);
+
+document.querySelectorAll(".sample-card").forEach(card => {
+  card.addEventListener("click", () => {
+    // Server nhận cả mã sản phẩm trần trong ô link.
+    document.getElementById("product-url").value = card.dataset.productId;
+    analyze();
+  });
 });
 
-document.querySelectorAll(".audience-tab").forEach(btn => {
-  btn.addEventListener("click", () => setActiveTab(btn.dataset.tab));
+document.getElementById("chat-fab").addEventListener("click", () => {
+  setChatOpen(document.getElementById("chat-panel").classList.contains("hidden"));
 });
+document.getElementById("chat-close").addEventListener("click", () => setChatOpen(false));
 
 document.querySelectorAll(".quick-questions button").forEach(btn => {
   btn.addEventListener("click", () => askAssistant(btn.dataset.question || btn.textContent.trim()));
 });
-
-const chatForm = document.getElementById("chat-form");
-if (chatForm) {
-  chatForm.addEventListener("submit", (e) => {
-    e.preventDefault();
-    const input = document.getElementById("chat-question");
-    const question = (input?.value || "").trim();
-    if (!question) return;
-    input.value = "";
-    askAssistant(question);
-  });
-}
-
-// Hàm renderAll
-function renderAll(data) {
-  if (!data) { 
-    console.error("renderAll: data is null"); 
-    return; 
-  }
-  
-  debugLog("=== RENDER ALL START ===");
-  debugLog("Product info:", data.product_info);
-  debugLog("Metrics:", data.metrics);
-  debugLog("Aspect table length:", data.aspect?.table?.length);
-  
-  try { renderHeader(data); }          catch (e) { console.error("renderHeader ERROR:", e); }
-  try { renderParentAssistant(data); } catch (e) { console.error("renderParentAssistant ERROR:", e); }
-  try { renderMetrics(data); }         catch (e) { console.error("renderMetrics ERROR:", e); }
-  try { renderCharts(data); }          catch (e) { console.error("renderCharts ERROR:", e); }
-  try { renderSW(data); }              catch (e) { console.error("renderSW ERROR:", e); }
-  try { renderOpinion(data); }         catch (e) { console.error("renderOpinion ERROR:", e); }
-  try { renderReviews(data); }         catch (e) { console.error("renderReviews ERROR:", e); }
-
-  document.getElementById("result-root").classList.remove("hidden");
-  debugLog("=== RENDER ALL COMPLETE ===");
-}
+document.getElementById("chat-form").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const input = document.getElementById("chat-question");
+  const question = input.value.trim();
+  if (!question) return;
+  input.value = "";
+  askAssistant(question);
+});

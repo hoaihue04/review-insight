@@ -3,64 +3,113 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Tiki Insight — ABSA Dashboard</title>
+  <title>ReviewInsight — ABSA Dashboard</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/style.css?v=seller-radar-only-20260801" />
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css?v=ui-20261116f" />
+  <link rel="stylesheet" href="/static/seller_dashboard.css?v=ui-20261116f" />
+  <link rel="stylesheet" href="/static/legacy_header.css?v=ui-20261116f" />
 </head>
 <body>
 
-  <!-- ── HERO ─────────────────────────────────────────────────────── -->
+  <!-- ── Đầu trang (giao diện gốc) ── -->
   <header class="hero">
     <div class="hero-bg"></div>
     <div class="hero-content">
       <div class="hero-badge">PhoBERT · ABSA Dashboard</div>
-      <h1>Tiki<em>Insight</em></h1>
+      <h1>Review<em>Insight</em></h1>
       <p class="hero-sub">Phân tích cảm xúc sản phẩm thông minh</p>
 
-      <div class="search-wrap">
-        <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <form class="search-wrap" id="search-form">
+        <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
           <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
         </svg>
-        <input id="product-url" type="text"
+        <input id="product-url" type="text" aria-label="Link sản phẩm Tiki"
                placeholder="Dán link sản phẩm tiki.vn vào đây..."
                autocomplete="off" spellcheck="false" />
-        <button id="analyze-btn">
+        <button id="analyze-btn" type="submit">
           <span class="btn-text">Phân tích</span>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
             <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
           </svg>
         </button>
-      </div>
+      </form>
       <p class="hint">Ví dụ: https://tiki.vn/khan-uot-em-be-bobby-p123456.html</p>
     </div>
   </header>
 
-  <!-- ── LOADING ───────────────────────────────────────────────────── -->
-  <div id="loading-overlay" class="loading-overlay hidden">
-    <div class="loading-card">
-      <div class="progress-ring">
-        <svg viewBox="0 0 80 80">
-          <circle class="ring-bg" cx="40" cy="40" r="34"/>
-          <circle class="ring-fill" id="ring-circle" cx="40" cy="40" r="34"/>
-        </svg>
-        <span id="progress-pct">0%</span>
-      </div>
-      <div class="loading-text">
-        <strong id="loading-step">Đang khởi động...</strong>
-        <p id="loading-sub">PhoBERT đang được nạp vào bộ nhớ</p>
-      </div>
-      <div class="progress-bar-wrap">
-        <div class="progress-bar" id="progress-bar" style="width:0%"></div>
-      </div>
-    </div>
+  <!-- ── Báo lỗi ── -->
+  <div id="error-banner" class="banner hidden" role="alert">
+    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5"/><path d="M12 16.5v.5"/></svg>
+    <span id="error-text"></span>
+    <button type="button" id="error-close" aria-label="Đóng thông báo">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12"/><path d="M18 6L6 18"/></svg>
+    </button>
   </div>
 
-  <!-- ── MAIN RESULT ───────────────────────────────────────────────── -->
+  <!-- ── Trang chủ khi chưa phân tích ── -->
+  <section id="landing" class="container landing">
+    <h2>Thử với một sản phẩm mẫu</h2>
+    <div class="sample-grid">
+      <button type="button" class="sample-card" data-product-id="59143353">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8l9-5 9 5v8l-9 5-9-5z"/><path d="M3 8l9 5 9-5"/><path d="M12 13v8"/></svg>
+        <span>Khăn ướt Bobby Care không hương, combo 6 gói<small>Mã sản phẩm 59143353</small></span>
+      </button>
+      <button type="button" class="sample-card" data-product-id="50423009">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8l9-5 9 5v8l-9 5-9-5z"/><path d="M3 8l9 5 9-5"/><path d="M12 13v8"/></svg>
+        <span>Tã dán Bobby sơ sinh siêu thấm S80<small>Mã sản phẩm 50423009</small></span>
+      </button>
+      <button type="button" class="sample-card" data-product-id="543129">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8l9-5 9 5v8l-9 5-9-5z"/><path d="M3 8l9 5 9-5"/><path d="M12 13v8"/></svg>
+        <span>Nước giặt quần áo cho bé D-nee, chai 3000ml<small>Mã sản phẩm 543129</small></span>
+      </button>
+    </div>
+
+    <h2>Kết quả gồm những gì</h2>
+    <div class="feature-grid">
+      <div class="feature">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 12h16"/><path d="M4 6h10"/><path d="M4 18h13"/></svg>
+        <strong>Tỷ lệ ba cảm xúc</strong>
+        <p>Bao nhiêu ý kiến tích cực, trung lập, tiêu cực, và chúng nằm trong bao nhiêu review.</p>
+      </div>
+      <div class="feature">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M5 20V10"/><path d="M12 20V4"/><path d="M19 20v-7"/></svg>
+        <strong>Cảm xúc theo chủ đề</strong>
+        <p>Chất lượng, giá, giao hàng, đóng gói: chủ đề nào được khen, chủ đề nào bị chê.</p>
+      </div>
+      <div class="feature">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 17l5-5 4 3 8-8"/><path d="M15 7h5v5"/></svg>
+        <strong>Xu hướng theo thời gian</strong>
+        <p>Tỷ lệ cảm xúc thay đổi ra sao, và từng chủ đề bắt đầu bị nhắc từ khi nào.</p>
+      </div>
+      <div class="feature">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8"/><path d="M8 12h5"/></svg>
+        <strong>Nguyên văn và hỏi đáp</strong>
+        <p>Tra từng câu khách viết, xuất CSV, và hỏi trợ lý về review của sản phẩm.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Đang phân tích ── -->
+  <section id="loading-view" class="container hidden" aria-live="polite">
+    <div class="panel load-card">
+      <ol class="load-steps" id="load-steps">
+        <li data-step="1"><span class="step-dot">1</span>Lấy thông tin và review từ Tiki</li>
+        <li data-step="2"><span class="step-dot">2</span>PhoBERT phân tích từng câu</li>
+        <li data-step="3"><span class="step-dot">3</span>Tổng hợp theo chủ đề</li>
+      </ol>
+      <div class="load-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="load-bar-wrap"><div id="load-bar"></div></div>
+      <div class="load-meta"><span id="load-msg">Đang khởi động</span><strong id="load-pct">0%</strong></div>
+    </div>
+    <div class="skel" style="height:128px;margin-bottom:16px"></div>
+    <div class="skel" style="height:220px;margin-bottom:16px"></div>
+    <div class="skel-row"><div class="skel" style="height:260px"></div><div class="skel" style="height:260px"></div></div>
+  </section>
+
+  <!-- ── Kết quả ── -->
   <main id="result-root" class="container hidden">
 
-    <!-- Product card -->
+    <!-- Thẻ sản phẩm (giao diện gốc) -->
     <section class="product-hero">
       <div class="product-img-col">
         <div class="product-image-wrap" id="product-img-wrap">
@@ -73,117 +122,186 @@
         <div id="product-meta" class="product-meta">—</div>
         <div id="product-short-desc" class="product-short-desc" style="display:none"></div>
       </div>
-      <div class="product-hero-right" id="product-scores">
-        <!-- injected by JS -->
-      </div>
+      <div class="product-hero-right" id="product-scores"></div>
     </section>
 
-    <nav class="audience-tabs" aria-label="Chế độ xem kết quả">
-      <button class="audience-tab active" type="button" data-tab="parent-tab">User</button>
-      <button class="audience-tab" type="button" data-tab="seller-tab">Seller dashboard</button>
+    <nav class="section-nav" aria-label="Các phần của dashboard">
+      <a href="#sec-overview" class="is-active">Tổng quan</a>
+      <a href="#sec-topics">Chủ đề</a>
+      <a href="#sec-trend">Xu hướng</a>
+      <a href="#sec-opinions">Ý kiến</a>
     </nav>
 
-    <section id="parent-tab" class="tab-panel active">
-      <section class="panel parent-chat-panel">
-        <div class="parent-panel-head">
+    <div id="seller-dash">
+
+      <!-- Tổng quan -->
+      <section id="sec-overview">
+        <div class="kpi-grid" id="sd-kpis"></div>
+        <div class="panel">
+          <p class="sd-sub" id="sd-split-title">Tỷ lệ ba cảm xúc</p>
+          <div class="sd-split" id="sd-split"></div>
+          <p class="sd-caption">Mỗi "ý kiến" là một chủ đề kèm cảm xúc mà PhoBERT nhận ra trong một review. Một review có thể có nhiều ý kiến; cùng một ý lặp lại trong một review chỉ tính một lần.</p>
+        </div>
+      </section>
+
+      <!-- Chủ đề -->
+      <section class="panel" id="sec-topics">
+        <div class="sd-head">
           <div>
-            <p class="section-kicker">Hỏi đáp theo sản phẩm</p>
-            <h3 class="panel-title">Hỏi trợ lý về sản phẩm này</h3>
+            <h3 class="panel-title">Cảm xúc theo chủ đề</h3>
+            <p class="sd-sub">Số ý kiến về từng chủ đề. Bấm một chủ đề để xem các ý kiến của nó.</p>
+          </div>
+          <div class="sd-legend">
+            <span><span class="sd-dot" style="background:var(--pos)"></span>Tích cực</span>
+            <span><span class="sd-dot" style="background:var(--neu)"></span>Trung lập</span>
+            <span><span class="sd-dot" style="background:var(--neg)"></span>Tiêu cực</span>
           </div>
         </div>
-        <div class="quick-questions">
-          <button type="button" data-question="Sản phẩm này có điểm gì cần lưu ý?">Điểm cần lưu ý</button>
-          <button type="button" data-question="Có phù hợp cho bé da nhạy cảm không?">Bé da nhạy cảm</button>
-          <button type="button" data-question="Người mua phàn nàn nhiều nhất về điều gì?">Phàn nàn nhiều</button>
+        <div class="sd-controls">
+          <div class="sd-control">
+            <span class="sd-control-label">Sắp xếp theo</span>
+            <div class="sd-chips" id="sd-sort"></div>
+          </div>
+          <div class="sd-control">
+            <span class="sd-control-label">Hiển thị</span>
+            <div class="sd-chips" id="sd-mode"></div>
+          </div>
         </div>
-        <div id="chat-output" class="chat-output">
-          <div class="assistant-message muted">Hãy phân tích một sản phẩm, sau đó đặt câu hỏi về đúng sản phẩm đó.</div>
-        </div>
-        <form id="chat-form" class="chat-form">
-          <input id="chat-question" type="text" placeholder="Ví dụ: Sản phẩm này có hợp với bé 6 tháng không?" autocomplete="off" />
-          <button type="submit">Send</button>
-        </form>
+        <div id="sd-topics"></div>
       </section>
-    </section>
 
-    <section id="seller-tab" class="tab-panel">
-
-    <!-- Metric row -->
-    <section class="metrics-strip" id="metrics-grid"></section>
-
-    <!-- Charts -->
-    <section class="charts-row">
-      <article class="panel chart-panel">
-        <h3 class="panel-title">Phân phối cảm xúc theo khía cạnh</h3>
-        <div class="chart-wrap">
-          <canvas id="aspectStackedChart"></canvas>
+      <!-- Xu hướng -->
+      <div id="sec-trend">
+      <div class="sd-controls sd-trend-bar">
+        <div class="sd-control">
+          <span class="sd-control-label">Xem theo</span>
+          <div class="sd-chips" id="sd-dim"></div>
         </div>
-      </article>
-      <article class="panel chart-panel chart-panel--narrow">
-        <h3 class="panel-title">RADAR khía cạnh sản phẩm</h3>
-        <div class="chart-wrap">
-          <canvas id="aspectRadarChart"></canvas>
+        <div class="sd-control hidden" id="sd-year-wrap">
+          <label for="sd-year">Năm</label>
+          <select id="sd-year" class="sd-select"><option value="all">Tất cả năm</option></select>
         </div>
-        <div class="chart-legend-note">
-          <span style="display:inline-flex;align-items:center;gap:6px;margin-right:16px">
-            <span style="display:inline-block;width:20px;height:2px;background:#2563eb;border-radius:2px"></span>
-            <span style="font-size:11px">Sản phẩm hiện tại</span>
-          </span>
+        <div class="sd-control hidden" id="sd-month-wrap">
+          <label for="sd-month">Tháng</label>
+          <select id="sd-month" class="sd-select"><option value="all">Tất cả tháng</option></select>
         </div>
-      </article>
-    </section>
-
-    <!-- Strengths / Weaknesses -->
-    <section class="panel sw-panel">
-      <div class="sw-col sw-col--green">
-        <div class="sw-header">
-          <span class="sw-dot"></span>
-          <h3>Điểm mạnh nổi bật</h3>
-        </div>
-        <ul id="strength-list" class="sw-list"></ul>
       </div>
-      <div class="sw-col sw-col--red">
-        <div class="sw-header">
-          <span class="sw-dot"></span>
-          <h3>Điểm yếu cần cải thiện</h3>
+      <div class="sd-row">
+        <section class="panel">
+          <div class="sd-head">
+            <div>
+              <h3 class="panel-title">Tỷ lệ ba cảm xúc theo <span class="sd-period-name">năm</span></h3>
+              <p class="sd-sub">Mỗi cột là 100% ý kiến của cột đó. Dải xám và con số bên dưới là số ý kiến của cột.</p>
+            </div>
+          </div>
+          <div id="sd-months"></div>
+        </section>
+
+        <section class="panel">
+          <div class="sd-head">
+            <div>
+              <h3 class="panel-title">Chủ đề theo <span class="sd-period-name">năm</span></h3>
+              <p class="sd-sub">Số ý kiến <strong id="sd-heat-label">tiêu cực</strong> về từng chủ đề. Ô càng đậm càng nhiều.</p>
+            </div>
+          </div>
+          <div class="sd-controls">
+            <div class="sd-control">
+              <span class="sd-control-label">Cảm xúc</span>
+              <div class="sd-chips" id="sd-heat-sel"></div>
+            </div>
+          </div>
+          <div class="sd-heat-wrap" id="sd-heat"></div>
+        </section>
+      </div>
+      </div>
+
+      <!-- Ý kiến -->
+      <section class="panel" id="sec-opinions">
+        <div class="sd-head">
+          <div>
+            <h3 class="panel-title">Khách nói gì</h3>
+            <p class="sd-sub">Mỗi dòng là một ý kiến. Một câu nói về nhiều chủ đề sẽ hiện nhiều dòng.</p>
+          </div>
+          <button type="button" class="btn-primary" id="sd-export">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M4 21h16"/></svg>
+            Xuất CSV
+          </button>
         </div>
-        <ul id="weakness-list" class="sw-list"></ul>
-      </div>
-    </section>
+        <div class="sd-controls">
+          <div class="sd-control">
+            <span class="sd-control-label">Cảm xúc</span>
+            <div class="sd-chips" id="sd-table-sel"></div>
+          </div>
+          <div class="sd-control">
+            <label for="sd-topic-filter">Chủ đề</label>
+            <select id="sd-topic-filter" class="sd-select"><option value="all">Tất cả chủ đề</option></select>
+          </div>
+          <div class="sd-control">
+            <label for="sd-star-filter">Số sao</label>
+            <select id="sd-star-filter" class="sd-select">
+              <option value="all">Mọi số sao</option>
+              <option value="5">5 sao</option>
+              <option value="4">4 sao</option>
+              <option value="3">3 sao</option>
+              <option value="2">2 sao</option>
+              <option value="1">1 sao</option>
+            </select>
+          </div>
+          <div class="sd-control">
+            <label for="sd-search">Từ khóa</label>
+            <input id="sd-search" class="sd-input" type="search" placeholder="Ví dụ: mùi, rách" autocomplete="off" />
+          </div>
+          <div class="sd-control" id="sd-active-filter"></div>
+        </div>
+        <div class="sd-table-scroll">
+          <table class="sd-table">
+            <thead>
+              <tr><th>Chủ đề</th><th>Cảm xúc</th><th>Khách viết</th><th>Số sao</th><th>Ngày</th></tr>
+            </thead>
+            <tbody id="sd-table-body"></tbody>
+          </table>
+        </div>
+        <div class="sd-table-foot">
+          <span id="sd-table-count"></span>
+          <div class="sd-chips">
+            <button type="button" class="sd-chip" id="sd-prev">Trang trước</button>
+            <button type="button" class="sd-chip" id="sd-next">Trang sau</button>
+          </div>
+        </div>
+      </section>
 
-    <!-- Opinion Mining table -->
-    <section class="panel">
-      <h3 class="panel-title">🔍 Opinion Mining — Trích xuất ý kiến chi tiết</h3>
-      <p style="font-size:12px;color:var(--text-3);margin-bottom:16px;margin-top:-12px">
-        Phân tích cảm xúc theo từng khía cạnh sản phẩm từ đánh giá của khách hàng
-      </p>
-      <div class="table-scroll">
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th>#</th>
-              <th>Nhóm khía cạnh<br><span style="font-weight:normal">(Tên gốc)</span></th>
-              <th>Ý nghĩa</th>
-              <th>Cảm Xúc</th>
-              <th>Độ Tin Cậy</th>
-              <th>Lượt</th>
-            </tr>
-          </thead>
-          <tbody id="opinion-body"></tbody>
-        </table>
-      </div>
-    </section>
-
-    <!-- Representative Reviews -->
-    <section class="panel">
-      <h3 class="panel-title">⭐ 3 đánh giá tiêu biểu</h3>
-      <div id="review-cards" class="review-grid"></div>
-    </section>
-
-    </section>
-
+    </div>
   </main>
 
-  <script src="/static/app.js?v=seller-radar-only-20260801"></script>
+  <!-- ── Chatbot ── -->
+  <aside id="chat-panel" class="chat-panel hidden" aria-label="Trợ lý review">
+    <div class="chat-head">
+      <div>
+        <strong>Trợ lý review</strong>
+        <span>Trả lời dựa trên review của sản phẩm đang xem</span>
+      </div>
+      <button type="button" class="chat-close" id="chat-close" aria-label="Đóng trợ lý">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12"/><path d="M18 6L6 18"/></svg>
+      </button>
+    </div>
+    <div class="quick-questions">
+      <button type="button" data-question="Khách khen điều gì nhiều nhất về sản phẩm này?">Khen nhiều nhất</button>
+      <button type="button" data-question="Người mua phàn nàn nhiều nhất về điều gì?">Phàn nàn nhiều nhất</button>
+      <button type="button" data-question="Có khách nào nhắc đến vấn đề an toàn của sản phẩm không?">Về an toàn</button>
+    </div>
+    <div id="chat-output" class="chat-output">
+      <div class="assistant-message muted">Hãy đặt câu hỏi về review của sản phẩm đang xem.</div>
+    </div>
+    <form id="chat-form" class="chat-form">
+      <input id="chat-question" type="text" aria-label="Câu hỏi cho trợ lý" placeholder="Ví dụ: Khách chê gì về giao hàng?" autocomplete="off" />
+      <button type="submit" class="btn-primary">Gửi</button>
+    </form>
+  </aside>
+  <button type="button" id="chat-fab" class="chat-fab hidden" aria-label="Mở trợ lý review" aria-expanded="false" aria-controls="chat-panel">
+    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8"/><path d="M8 12h5"/></svg>
+  </button>
+
+  <script src="/static/app.js?v=ui-20261116f"></script>
+  <script src="/static/seller_dashboard.js?v=ui-20261116f"></script>
 </body>
 </html>
