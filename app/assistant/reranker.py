@@ -11,8 +11,10 @@ class CrossEncoderReranker:
         self.model_name = model_name or settings.reranker_model
         self.enabled = settings.reranker_enabled if enabled is None else enabled
         self._model = None
+        self.last_used = False
 
     def rerank(self, question: str, rows: list[dict[str, Any]], limit: int) -> list[dict[str, Any]]:
+        self.last_used = False
         if not self.enabled or not rows:
             return rows[:limit]
 
@@ -44,6 +46,7 @@ class CrossEncoderReranker:
                 "reranker_raw_score": value,
             })
         scored.sort(key=lambda item: item.get("reranker_score", 0.0), reverse=True)
+        self.last_used = True
         return scored[:limit]
 
     def _load_model(self):

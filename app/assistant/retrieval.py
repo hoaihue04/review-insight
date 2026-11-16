@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import re
 from typing import Any
 
 from app.assistant.cache import RedisCache
@@ -62,11 +63,18 @@ class HybridRetrievalService:
             return cached
 
         strategy = "postgres_first" if query.intent in STATISTICAL_INTENTS else "vector_first"
-        vector_limit = max(limit, 8)
+        final_limit = min(limit, max(1, settings.retrieval_final_limit))
+        vector_limit = max(final_limit, settings.retrieval_candidate_limit)
         if settings.reranker_enabled:
             vector_limit = max(vector_limit, settings.reranker_top_k)
         vector_rows = self._search_vector(product_id, question, query, limit=vector_limit)
-        vector_rows = self.reranker.rerank(question, vector_rows, limit=max(limit, 8))
+        vector_rows = self.reranker.rerank(_build_rerank_query(question, query), vector_rows, limit=vector_limit)
+        if self.reranker.last_used:
+            filtered = [
+                row for row in vector_rows
+                if float(row.get("reranker_score") or 0.0) >= settings.reranker_min_score
+            ]
+            vector_rows = filtered or vector_rows[:1]
 
         if strategy == "postgres_first":
             merged = _hybrid_rank(
@@ -85,7 +93,7 @@ class HybridRetrievalService:
 
         result = {
             "strategy": strategy,
-            "evidence": merged[:limit],
+            "evidence": _select_diverse(merged, query, final_limit),
             "vector_used": bool(vector_rows),
             "cache_hit": False,
         }
@@ -101,6 +109,29 @@ class HybridRetrievalService:
     ) -> list[dict[str, Any]]:
         sentiments = _sentiments_for_intent(query.intent)
         aspects = query.target_aspects or None
+        if query.intent == "PRODUCT_FIT" and aspects and len(aspects) > 1:
+            per_aspect = max(2, limit // len(aspects))
+            groups = [
+                self.vector_store.search(
+                    product_id=product_id,
+                    query=question,
+                    limit=per_aspect,
+                    sentiments=sentiments,
+                    aspects=[aspect],
+                )
+                for aspect in aspects
+            ]
+            rows = _merge_unique(groups, limit=limit)
+            if len(rows) >= limit:
+                return rows
+            broad = self.vector_store.search(
+                product_id=product_id,
+                query=question,
+                limit=limit,
+                sentiments=sentiments,
+                aspects=aspects,
+            )
+            return _merge_unique([rows, broad], limit=limit)
         return self.vector_store.search(
             product_id=product_id,
             query=question,
@@ -116,6 +147,54 @@ def _sentiments_for_intent(intent: str) -> list[str] | None:
     if intent in {"SUMMARY", "RECOMMENDATION", "PRODUCT_FIT", "PRODUCT_QA", "ASPECT_QA"}:
         return ["negative", "positive", "neutral"]
     return None
+
+
+def _build_rerank_query(question: str, query: QueryAnalysis) -> str:
+    parts = [question.strip()]
+    if query.target_aspects:
+        parts.append("Khía cạnh: " + ", ".join(query.target_aspects))
+    # QueryAnalysis currently stores sentiment as a constraint rather than a
+    # dedicated field. Keep this compatible with both representations.
+    sentiment = getattr(query, "sentiment", None)
+    if sentiment:
+        parts.append("Cảm xúc: " + str(sentiment).lower())
+    return " | ".join(part for part in parts if part)
+
+
+def _merge_unique(groups: list[list[dict[str, Any]]], limit: int) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for group in groups:
+        for row in group:
+            key = str(row.get("review_id") or "") + "|" + " ".join(str(row.get("text") or "").lower().split())
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(row)
+            if len(out) >= limit:
+                return out
+    return out
+
+
+def _select_diverse(rows: list[dict[str, Any]], query: QueryAnalysis, limit: int) -> list[dict[str, Any]]:
+    del query
+    selected: list[dict[str, Any]] = []
+    selected_tokens: list[set[str]] = []
+    for row in rows:
+        tokens = set(re.findall(r"\w+", str(row.get("text") or "").lower()))
+        if any(_jaccard(tokens, previous) >= 0.85 for previous in selected_tokens):
+            continue
+        selected.append(row)
+        selected_tokens.append(tokens)
+        if len(selected) >= limit:
+            break
+    return selected or rows[:limit]
+
+
+def _jaccard(left: set[str], right: set[str]) -> float:
+    if not left or not right:
+        return 0.0
+    return len(left & right) / len(left | right)
 
 
 def _hybrid_rank(

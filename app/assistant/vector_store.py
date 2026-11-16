@@ -146,6 +146,9 @@ class PgVectorOpinionStore:
 
         rows: list[dict[str, Any]] = []
         for hit in hits:
+            semantic_score = float(hit.get("semantic_score") or 0.0)
+            if semantic_score < settings.semantic_min_score:
+                continue
             rows.append({
                 "review_id": str(hit.get("review_id") or ""),
                 "aspect": str(hit.get("aspect_label") or hit.get("aspect") or ""),
@@ -154,7 +157,7 @@ class PgVectorOpinionStore:
                 "sentiment": str(hit.get("sentiment") or "neutral"),
                 "confidence": float(hit.get("confidence") or 0.0),
                 "text": str(hit.get("text") or ""),
-                "semantic_score": float(hit.get("semantic_score") or 0.0),
+                "semantic_score": semantic_score,
                 "source": "pgvector",
             })
         return rows
@@ -180,7 +183,7 @@ def _is_indexable_chunk(chunk: dict[str, Any]) -> bool:
     text = str(chunk.get("text") or "").strip()
     aspect = str(chunk.get("aspect") or "").strip()
     sentiment = str(chunk.get("sentiment") or "").strip()
-    return bool(text and aspect and sentiment in {"positive", "neutral", "negative"} and len(text) >= 24)
+    return bool(text and aspect and sentiment in {"positive", "neutral", "negative"} and len(text) >= 5)
 
 
 def opinion_chunks_from_aspect_items(aspect_items: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -191,7 +194,7 @@ def opinion_chunks_from_aspect_items(aspect_items: list[dict[str, Any]]) -> list
         sentiment = str(item.get("sentiment") or item.get("polarity") or "neutral").strip()
         text = _compress_text(str(item.get("sentence") or item.get("text") or item.get("evidence") or ""))
         review_id = str(item.get("review_id") or "").strip()
-        if not aspect or sentiment not in {"positive", "neutral", "negative"} or len(text) < 24:
+        if not aspect or sentiment not in {"positive", "neutral", "negative"} or len(text) < 5:
             continue
         key = "|".join([review_id, aspect, sentiment, " ".join(text.lower().split())])
         if key in seen:
@@ -208,7 +211,7 @@ def opinion_chunks_from_aspect_items(aspect_items: list[dict[str, Any]]) -> list
     return chunks
 
 
-def _compress_text(text: str, limit: int = 180) -> str:
+def _compress_text(text: str, limit: int = 400) -> str:
     text = " ".join(text.split())
     if len(text) <= limit:
         return text
