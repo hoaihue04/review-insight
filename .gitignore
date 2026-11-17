@@ -3,6 +3,7 @@
 .env.example
 tests/
 scripts/
+notebooks/
 
 .venv/
 .spyproject/

@@ -182,6 +182,5 @@ Chất lượng tổng thể có số lời chê tuyệt đối lớn nhất (33
 |-- Dockerfile
 |-- docker-compose.yml
 |-- pyproject.toml
-|-- requirements.txt
-`-- .env.example
+`-- requirements.txt
 ```
