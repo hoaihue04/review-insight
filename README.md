@@ -121,7 +121,10 @@ Mỗi dòng là một ý kiến, kèm chủ đề, cảm xúc, nguyên văn câu
 
 ### 4.5 Trợ lý review
 
-![Trợ lý review](docs/images/06-tro-ly.png)
+<p align="center">
+  <img src="docs/images/06-tro-ly-1.png" alt="Trợ lý review 1" width="48%">
+  <img src="docs/images/07-tro-ly-2.png" alt="Trợ lý review 2" width="48%">
+</p>
 
 Nút tròn ở góc dưới bên phải mở khung hỏi đáp về chính sản phẩm đang xem, ví dụ "Khách chê gì về giao hàng?". Trợ lý trả lời dựa trên số liệu đã đếm và các câu review liên quan, có trích dẫn bằng chứng. 
 
@@ -129,7 +132,7 @@ Nút tròn ở góc dưới bên phải mở khung hỏi đáp về chính sản
 
 Sản phẩm *Combo 6 gói khăn ướt Bobby Care không hương* (3.040 review, sao trung bình 5,0). Hệ thống phân tích 197 review, nhận ra **497 ý kiến**: 369 tích cực (74%), 23 trung lập (5%), 105 tiêu cực (21%).
 
-**1. Sao 5,0 nhưng vẫn có nhiều lời chê.** 67 trên 197 review (34%) chứa ít nhất một ý kiến tiêu cực, và **33 trong 67 review đó (49%) vẫn chấm 4 đến 5 sao**. Sao trung bình không nhìn thấy được những lời chê này.
+**1. Sao 5,0 nhưng vẫn có nhiều lời chê.** 67 trên 197 review (34%) chứa ít nhất một ý kiến tiêu cực. Sao trung bình không nhìn thấy được những lời chê này.
 
 **2. Chủ đề chiếm nhiều ý kiến nhất chưa chắc có tỷ lệ chê cao nhất.**
 
