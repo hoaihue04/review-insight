@@ -23,6 +23,8 @@ data/raw/
 data/interim/
 data/processed/
 data/training/
+data/eval/
+data/samples/
 
 models/**/*.pt
 models/**/*.pth
