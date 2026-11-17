@@ -5,7 +5,7 @@
 ![PhoBERT](https://img.shields.io/badge/Model-PhoBERT-orange)
 ![PostgreSQL](https://img.shields.io/badge/Database-PostgreSQL-336791?logo=postgresql)
 
-ReviewInsight biến hàng nghìn review tiếng Việt của một sản phẩm trên Tiki thành một bảng theo dõi cho **chủ cửa hàng**: khách đang **khen gì, chê gì**, chủ đề nào bị chê nhiều nhất, vấn đề xuất hiện từ khi nào, và khách đã viết nguyên văn những gì.
+ReviewInsight biến hàng nghìn review tiếng Việt của một sản phẩm trên sàn TMĐT thành một bảng theo dõi cho **chủ cửa hàng**: khách đang **khen gì, chê gì**, chủ đề nào bị chê nhiều nhất, vấn đề xuất hiện từ khi nào, và khách đã viết nguyên văn những gì.
 
 ![Trang chủ](docs/images/01-trang-chu.png)
 
