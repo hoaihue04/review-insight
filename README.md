@@ -67,9 +67,6 @@ Làm sạch văn bản, tách câu
 PhoBERT: mỗi câu -> các bộ (khía cạnh, cảm xúc)
         |
         v
-Đếm ý kiến theo cảm xúc / chủ đề / thời gian
-        |
-        v
 Dashboard + bảng ý kiến + trợ lý hỏi đáp
 ```
 
