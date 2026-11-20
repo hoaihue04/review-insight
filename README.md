@@ -274,7 +274,6 @@ Một số điểm đáng chú ý:
 |   |-- data_labeling/        # Chuẩn bị mẫu gán nhãn thủ công và đối chiếu với LLM
 |   |-- training/             # Huấn luyện PhoBERT, BiLSTM-CRF, SVM + TF-IDF
 |   `-- evaluation/           # Sinh câu hỏi, gán đáp án, đánh giá Ragas và bộ lọc
-|-- scripts/                  # Cài database, nạp dữ liệu, nhúng lại vector, hỏi trợ lý từ dòng lệnh
 |-- data/                     # Dữ liệu
 |-- models/                  
 |-- docs/images/              # Ảnh minh họa giao diện
