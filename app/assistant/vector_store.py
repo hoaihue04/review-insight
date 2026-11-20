@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 from typing import Any
 
 from sqlalchemy import text
@@ -10,10 +11,19 @@ from app.assistant.db import get_engine
 from app.assistant.embedding import EmbeddingService
 
 
+def vector_table_name() -> str:
+    """Bảng vector theo VECTOR_TABLE; mỗi mô hình embedding (số chiều khác nhau) một bảng."""
+    name = (settings.vector_table or "opinion_chunks").strip().lower()
+    if not re.fullmatch(r"[a-z_][a-z0-9_]{0,62}", name):
+        raise ValueError(f"VECTOR_TABLE không hợp lệ: {name!r}")
+    return name
+
+
 class PgVectorOpinionStore:
     def __init__(self, embedding: EmbeddingService | None = None) -> None:
         self.embedding = embedding or EmbeddingService()
         self.enabled = bool(settings.database_url and self.embedding.enabled)
+        self.table = vector_table_name()
         self._initialized = False
 
     def _ensure_schema(self) -> bool:
@@ -22,11 +32,15 @@ class PgVectorOpinionStore:
         engine = get_engine()
         if engine is None:
             return False
+        table = self.table
         try:
+            dimension = self.embedding.dimension
+            if not dimension:
+                return False
             with engine.begin() as connection:
                 connection.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
-                connection.execute(text("""
-                    CREATE TABLE IF NOT EXISTS opinion_chunks (
+                connection.execute(text(f"""
+                    CREATE TABLE IF NOT EXISTS {table} (
                         id BIGINT PRIMARY KEY,
                         product_id VARCHAR(128) NOT NULL,
                         review_id VARCHAR(128) NOT NULL DEFAULT '',
@@ -35,16 +49,28 @@ class PgVectorOpinionStore:
                         sentiment VARCHAR(32) NOT NULL,
                         confidence DOUBLE PRECISION NOT NULL DEFAULT 0,
                         text TEXT NOT NULL,
-                        embedding vector(384) NOT NULL
+                        embedding vector({int(dimension)}) NOT NULL
                     )
                 """))
+                existing = connection.execute(text(
+                    "SELECT atttypmod FROM pg_attribute "
+                    "WHERE attrelid = to_regclass(:table) AND attname = 'embedding'"
+                ), {"table": table}).scalar()
+                if existing and int(existing) != int(dimension):
+                    # Bảng được tạo bằng mô hình embedding khác: tìm/ghi sẽ lỗi. Dùng bảng khác
+                    # (VECTOR_TABLE) hoặc chạy scripts/reindex_vectors.py --recreate.
+                    print(
+                        f"[vector_store] Bảng {table} có vector({existing}) nhưng EMBEDDING_MODEL "
+                        f"cho {dimension} chiều; tắt tìm kiếm ngữ nghĩa."
+                    )
+                    self.enabled = False
+                    return False
                 connection.execute(text(
-                    "CREATE INDEX IF NOT EXISTS opinion_chunks_product_idx "
-                    "ON opinion_chunks (product_id)"
+                    f"CREATE INDEX IF NOT EXISTS {table}_product_idx ON {table} (product_id)"
                 ))
                 connection.execute(text(
-                    "CREATE INDEX IF NOT EXISTS opinion_chunks_embedding_hnsw_idx "
-                    "ON opinion_chunks USING hnsw (embedding vector_cosine_ops)"
+                    f"CREATE INDEX IF NOT EXISTS {table}_embedding_hnsw_idx "
+                    f"ON {table} USING hnsw (embedding vector_cosine_ops)"
                 ))
             self._initialized = True
             return True
@@ -77,8 +103,8 @@ class PgVectorOpinionStore:
                     "embedding": _vector_literal(vector),
                 })
             with engine.begin() as connection:
-                connection.execute(text("""
-                    INSERT INTO opinion_chunks
+                connection.execute(text(f"""
+                    INSERT INTO {self.table}
                         (id, product_id, review_id, aspect, aspect_label,
                          sentiment, confidence, text, embedding)
                     VALUES
@@ -106,7 +132,11 @@ class PgVectorOpinionStore:
         limit: int = 8,
         sentiments: list[str] | None = None,
         aspects: list[str] | None = None,
+        min_score: float | None = None,
     ) -> list[dict[str, Any]]:
+        """min_score: ngưỡng cosine; mặc định SEMANTIC_MIN_SCORE. Truyền 0 khi đã lọc
+        cứng theo chủ đề/cảm xúc, vì khi đó mọi dòng đều đúng điều kiện và chỉ cần xếp hạng."""
+        threshold = settings.semantic_min_score if min_score is None else min_score
         if not self.enabled or not self._ensure_schema():
             return []
         vector = self.embedding.embed_text(query)
@@ -133,7 +163,7 @@ class PgVectorOpinionStore:
                 SELECT review_id, aspect, aspect_label, sentiment,
                        confidence, text,
                        1 - (embedding <=> CAST(:query_embedding AS vector)) AS semantic_score
-                FROM opinion_chunks
+                FROM {self.table}
                 WHERE {' AND '.join(filters)}
                 ORDER BY embedding <=> CAST(:query_embedding AS vector)
                 LIMIT :limit
@@ -147,7 +177,7 @@ class PgVectorOpinionStore:
         rows: list[dict[str, Any]] = []
         for hit in hits:
             semantic_score = float(hit.get("semantic_score") or 0.0)
-            if semantic_score < settings.semantic_min_score:
+            if semantic_score < threshold:
                 continue
             rows.append({
                 "review_id": str(hit.get("review_id") or ""),

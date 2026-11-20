@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from app.assistant.llm import LLMError
@@ -81,6 +81,8 @@ class StatisticsQueryPlan:
     limit: int = 5
     include_examples: bool = True
     source: str = "fallback"
+    date_from: str | None = None  # ISO, tính cả hai đầu; lấy từ QueryAnalysis
+    date_to: str | None = None
 
     def to_prompt_context(self) -> dict[str, Any]:
         return {
@@ -92,6 +94,8 @@ class StatisticsQueryPlan:
             "limit": self.limit,
             "include_examples": self.include_examples,
             "source": self.source,
+            "date_from": self.date_from,
+            "date_to": self.date_to,
         }
 
 
@@ -102,6 +106,9 @@ class StatisticsPlanner:
     def should_plan(self, question: str, query: QueryAnalysis) -> bool:
         if query.intent in STATISTICAL_INTENTS:
             return True
+        # Câu hỏi có bộ lọc rõ ràng thì luôn kèm số liệu đúng phạm vi.
+        if query.date_from or (query.sentiment and query.target_aspects):
+            return True
         normalized = normalize_text(question)
         return any(marker in normalized for marker in STATISTICAL_MARKERS)
 
@@ -109,12 +116,12 @@ class StatisticsPlanner:
         if not self.should_plan(question, query):
             return None
 
+        plan = None
         if self.llm is not None and self.llm.is_configured():
             llm_plan = self._plan_by_llm(question, query)
             if llm_plan is not None:
-                return _align_plan_with_question(llm_plan, question, query)
-
-        return default_plan_for_query(query, question)
+                plan = _align_plan_with_question(llm_plan, question, query)
+        return apply_query_filters(plan or default_plan_for_query(query, question), query)
 
     def _plan_by_llm(self, question: str, query: QueryAnalysis) -> StatisticsQueryPlan | None:
         system_prompt = (
@@ -299,6 +306,17 @@ def _align_plan_with_question(
         limit=plan.limit,
         include_examples=plan.include_examples,
         source=plan.source,
+    )
+
+
+def apply_query_filters(plan: StatisticsQueryPlan, query: QueryAnalysis) -> StatisticsQueryPlan:
+    """Bộ lọc của QueryAnalysis là nguồn sự thật duy nhất: kế hoạch không tự đoán lại."""
+    return replace(
+        plan,
+        sentiment=query.sentiment or plan.sentiment,
+        target_aspects=list(query.target_aspects) or plan.target_aspects,
+        date_from=query.date_from,
+        date_to=query.date_to,
     )
 
 

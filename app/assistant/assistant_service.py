@@ -2,8 +2,18 @@ from __future__ import annotations
 
 import json
 import re
+from datetime import date
 from typing import Any, Optional
 
+from app.assistant.answer_writer import (
+    SYSTEM_PROMPT as ANSWER_SYSTEM_PROMPT,
+    add_review_context,
+    build_answer_facts,
+    build_llm_prompt,
+    check_llm_answer,
+    evidence_for_prompt,
+    template_answer,
+)
 from app.assistant.config import settings
 from app.assistant.llm import ChatLLMClient, LLMError
 from app.assistant.query_analyzer import QueryAnalysis, QueryAnalyzer
@@ -13,6 +23,9 @@ from app.assistant.risk import detect_risks
 from app.assistant.scoring import compute_purchase_score, select_evidence
 from app.assistant.statistics_executor import StatisticsQueryExecutor
 from app.assistant.statistics_planner import StatisticsPlanner
+from app.assistant.time_parser import describe_period
+from app.web.constants import ASPECT_DISPLAY_NAMES
+from app.web.seller_summary import dedupe_opinions
 
 
 ASPECT_LABELS = {
@@ -131,6 +144,19 @@ class ParentAssistantService:
         scoped_stats = _scope_stats_for_query(stats, query)
         scoped_risks = _scope_risks_for_query(risks, query)
         scoped_analytics = _scope_analytics_for_query(analytics or {}, query)
+        allowed_review_ids = None
+        if query.date_from:
+            # Số liệu toàn thời gian và cảnh báo rủi ro không gắn ngày sẽ làm câu trả lời
+            # trong một khoảng thời gian bị sai; khi đó chỉ dùng thống kê trong khoảng ngày,
+            # đếm theo ý kiến đã loại trùng như dashboard.
+            in_period = dedupe_opinions([item for item in aspects if query.in_period(item.get("review_date"))])
+            scoped_stats = _scope_stats_for_query(_aspect_statistics(in_period), query)
+            scoped_analytics, scoped_risks = {}, []
+            allowed_review_ids = {
+                str(review.get("review_id") or "")
+                for review in ctx.get("reviews") or []
+                if query.in_period(review.get("review_date"))
+            }
         structured_evidence = _retrieve_for_query(aspects, risks, query, limit=6)
         retrieval_result = self.retrieval.retrieve(
             product_id=product_id,
@@ -138,28 +164,34 @@ class ParentAssistantService:
             query=query,
             structured_evidence=structured_evidence,
             limit=6,
+            allowed_review_ids=allowed_review_ids,
         )
         evidence = retrieval_result.get("evidence") or structured_evidence
         product = ctx.get("product") or {}
-        fallback = _fallback_structured_answer(product, query.intent, None, scoped_risks, evidence, scoped_stats, scoped_analytics)
+        if query.has_filters() and not evidence:
+            return _no_data_response(product_id, ctx, query, statistics_plan, statistics_result)
+        # Câu trả lời cho nhân viên/chủ shop: số liệu từ build_answer_facts (cùng cách đếm với
+        # dashboard), LLM viết lại thành văn tự nhiên; không đạt kiểm tra thì dùng mẫu soạn sẵn.
+        facts = build_answer_facts(aspects, query)
+        review_info = {str(r.get("review_id") or ""): r for r in ctx.get("reviews") or []}
+        evidence = add_review_context(evidence, review_info)
+        evidence_rows = evidence_for_prompt(evidence, review_info)
+        answer_text = template_answer(facts, evidence, query, question)
         llm_used = False
-        structured = fallback
         if use_llm:
-            llm_answer = self._try_llm_chat(
-                product,
-                question,
-                evidence,
-                query,
-                scoped_stats,
-                scoped_risks,
-                scoped_analytics,
-                statistics_result,
-            )
-            if llm_answer:
-                structured = llm_answer
+            llm_text = self._try_llm_answer(question, product, facts, evidence_rows)
+            if llm_text:
+                answer_text = llm_text
                 llm_used = True
-        answer_text = _format_structured_answer(structured, intent=query.intent)
-        answer_text = _prepend_statistics_summary(answer_text, statistics_result)
+        structured = {
+            "summary": answer_text,
+            "pros": [],
+            "cons": [],
+            "recommendation": "",
+            "confidence": "medium",
+            "confidence_reasons": [],
+            "citations": _citations_from_evidence(evidence[:4]),
+        }
         return {
             "product_id": product_id,
             "answer": answer_text,
@@ -173,6 +205,8 @@ class ParentAssistantService:
             "cache_hit": bool(retrieval_result.get("cache_hit")),
             "llm_used": llm_used,
             "llm_model": self.llm.model if llm_used else "",
+            # Số liệu đã dùng để viết câu trả lời (bộ đo Ragas cần để chấm Faithfulness).
+            "answer_facts": facts,
         }
 
     def _try_llm_purchase_summary(
@@ -201,8 +235,31 @@ class ParentAssistantService:
         )
         try:
             return _sanitize_structured_answer(self.llm.generate_json(system_prompt, user_prompt), evidence)
-        except LLMError:
+        except LLMError as exc:
+            print(f"[LLM] Lỗi khi viết tư vấn, dùng câu trả lời soạn sẵn: {exc}")
             return {}
+
+    def _try_llm_answer(
+        self,
+        question: str,
+        product: dict[str, Any],
+        facts: dict[str, Any],
+        evidence_rows: list[dict[str, Any]],
+    ) -> str:
+        if not self.llm.is_configured():
+            return ""
+        prompt = build_llm_prompt(question, str(product.get("name") or ""), facts, evidence_rows)
+        try:
+            data = self.llm.generate_json(ANSWER_SYSTEM_PROMPT, prompt)
+        except LLMError as exc:
+            print(f"[LLM] Lỗi khi viết câu trả lời chat, dùng câu trả lời soạn sẵn: {exc}")
+            return ""
+        text = str(data.get("answer") or data.get("summary") or "").strip()
+        problem = check_llm_answer(text, facts, evidence_rows, question)
+        if problem:
+            print(f"[LLM] Câu trả lời không đạt ({problem}), dùng câu trả lời soạn sẵn.")
+            return ""
+        return text
 
     def _try_llm_chat(
         self,
@@ -223,7 +280,8 @@ class ParentAssistantService:
         )
         try:
             return _sanitize_structured_answer(self.llm.generate_json(system_prompt, user_prompt), evidence)
-        except LLMError:
+        except LLMError as exc:
+            print(f"[LLM] Lỗi khi viết câu trả lời chat, dùng câu trả lời soạn sẵn: {exc}")
             return {}
 
 
@@ -335,6 +393,10 @@ def _build_chat_prompt(
         "If planned_sql_analytics contains rows or data and the user asks a statistical/comparison/count question, "
         "prioritize those numbers over generic semantic evidence. Mention the leading aspect/count/ratio when available. "
         "If planned_sql_analytics is empty, say there is not enough statistical data and use representative_opinions cautiously.\n\n"
+        "FILTER_RULE:\n"
+        "question_focus.target_aspects, sentiment_filter and period_filter are filters that have ALREADY been applied "
+        "to every number and opinion in this context. Answer only within that scope, state the period when one is given, "
+        "and never describe opinions outside it.\n\n"
         "INSTRUCTION:\n"
         f"{instruction}"
     )
@@ -342,7 +404,7 @@ def _build_chat_prompt(
 
 def _shopping_assistant_system_prompt() -> str:
     return (
-        "Bạn là AI Shopping Assistant hỗ trợ phụ huynh lựa chọn sản phẩm.\n"
+        "Bạn là trợ lý phân tích review, giúp chủ cửa hàng biết khách hàng đang nói gì về sản phẩm.\n"
         "QUY TẮC:\n"
         "- Chỉ sử dụng thông tin có trong context.\n"
         "- Không suy diễn ngoài dữ liệu.\n"
@@ -352,10 +414,9 @@ def _shopping_assistant_system_prompt() -> str:
         "- Phải tổng hợp từ nhiều review khi có đủ evidence.\n"
         "- Luôn sử dụng tiếng Việt có dấu.\n"
         "- Ngôn ngữ tự nhiên, thân thiện, dễ hiểu.\n"
-        "- Trả lời như một chuyên gia tư vấn mua sắm.\n"
+        "- Chỉ thuật lại khách hàng đã nói gì và số liệu liên quan. KHÔNG đưa lời khuyên, khuyến nghị "
+        "hay đề xuất hành động (không dùng \"nên\", \"hãy\", \"có thể mua\", \"cân nhắc\", \"quyết định\").\n"
         "- Nếu dữ liệu chưa đủ thì nói rõ \"Chưa có đủ dữ liệu để kết luận\".\n"
-        "- Không dùng các câu khuyến nghị chung chung như \"Nên cân nhắc thêm\" hoặc \"Nên đọc kỹ review\".\n"
-        "- Mỗi khuyến nghị phải dựa trên dữ liệu thực tế của sản phẩm.\n"
         "- Mỗi kết luận quan trọng cần có ít nhất một bằng chứng hỗ trợ.\n"
         "- Không lặp lại cùng một evidence nhiều lần.\n"
         "- Tối đa 500 từ.\n"
@@ -370,13 +431,13 @@ def _json_response_contract() -> str:
         '  "summary": "complete natural answer in 1-2 short paragraphs, directly answering the user",\n'
         '  "pros": ["optional short positive point, avoid repeating summary"],\n'
         '  "cons": ["optional short caution, avoid repeating summary"],\n'
-        '  "recommendation": "optional final advice, leave empty if already covered in summary",\n'
         '  "confidence": "low|medium|high",\n'
         '  "confidence_reasons": ["short reason why confidence has this level"],\n'
         '  "citations": [{"aspect": "friendly aspect label", "evidence": "short paraphrased evidence"}]\n'
         "}\n"
         "Do not include markdown fences or any extra keys. "
-        "Do not force headings like Pros, Cons, Recommendation, or Confidence into summary."
+        "Do not force headings like Pros, Cons, or Confidence into summary. "
+        "Never give advice or recommendations; only report what customers said."
     )
 
 
@@ -384,7 +445,7 @@ def _compact_product(product: dict[str, Any]) -> dict[str, Any]:
     return {
         "name": product.get("name"),
         "price": product.get("price"),
-        "rating_average": product.get("rating_average"),
+        # Không gửi điểm sao trung bình: câu trả lời không nêu chỉ số này.
         "review_count": product.get("review_count"),
         "brand_name": product.get("brand_name"),
         "seller_name": product.get("seller_name"),
@@ -396,6 +457,8 @@ def _friendly_query_context(query: QueryAnalysis) -> dict[str, Any]:
         "target_aspects": [_aspect_label(aspect) for aspect in query.target_aspects],
         "constraints": query.constraints,
         "source": query.source,
+        "sentiment_filter": {"negative": "tiêu cực", "positive": "tích cực", "neutral": "trung lập"}.get(query.sentiment or "", ""),
+        "period_filter": query.period_text(),
     }
 
 
@@ -432,7 +495,7 @@ def _compact_statistics_result(result: dict[str, Any]) -> dict[str, Any]:
     return {
         "plan": result.get("plan") or {},
         "metric": result.get("metric") or "",
-        "data": result.get("data") or {},
+        "data": {k: v for k, v in (result.get("data") or {}).items() if k != "avg_review_rating"},
         "rows": compact_rows,
     }
 
@@ -455,13 +518,13 @@ def _statistics_summary_line(result: dict[str, Any]) -> str:
     rows = result.get("rows") or []
     data = result.get("data") or {}
     plan = result.get("plan") or {}
+    period = describe_period(plan.get("date_from"), plan.get("date_to"))
+    scope = _period_phrase(period) if period else " trong dữ liệu đã phân tích"
 
     if metric == "review_statistics" and data:
         review_count = int(data.get("stored_review_count") or 0)
         aspect_count = int(data.get("aspect_record_count") or 0)
-        avg_rating = data.get("avg_review_rating")
-        rating_text = f", điểm review trung bình {avg_rating}" if avg_rating is not None else ""
-        return f"Trong dữ liệu hiện có có {review_count} review và {aspect_count} lượt ý kiến theo khía cạnh{rating_text}."
+        return f"Có {review_count} review và {aspect_count} ý kiến theo khía cạnh{scope}."
 
     if not rows:
         return ""
@@ -481,12 +544,12 @@ def _statistics_summary_line(result: dict[str, Any]) -> str:
             ratio_text = f" ({_percent(row.get('positive_ratio'))})"
         elif sentiment == "negative" and row.get("negative_ratio") is not None:
             ratio_text = f" ({_percent(row.get('negative_ratio'))})"
-        return f"Có {total} {sentiment_text} về {aspect.lower()}{ratio_text} trong dữ liệu đã phân tích."
+        return f"Có {total} {sentiment_text} về {aspect.lower()}{ratio_text}{scope}."
 
     if row.get("risk_type"):
         risk = _risk_label(str(row.get("risk_type") or ""))
         total = int(row.get("total") or 0)
-        return f"Có {total} tín hiệu rủi ro liên quan đến {risk.lower()} trong dữ liệu đã phân tích."
+        return f"Có {total} tín hiệu rủi ro liên quan đến {risk.lower()}{scope}."
 
     if row.get("rating"):
         rating = int(row.get("rating") or 0)
@@ -624,12 +687,121 @@ def _friendly_risk_stat_row(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _no_data_response(
+    product_id: str,
+    ctx: dict[str, Any],
+    query: QueryAnalysis,
+    statistics_plan: Any,
+    statistics_result: dict[str, Any],
+) -> dict[str, Any]:
+    """Câu trả lời khi bộ lọc không còn ý kiến nào: nói rõ, không lấp bằng ý kiến khác."""
+    message = _no_data_message(query, ctx.get("reviews") or [])
+    return {
+        "product_id": product_id,
+        "answer": message,
+        "structured_answer": {
+            "summary": message,
+            "pros": [],
+            "cons": [],
+            "recommendation": "",
+            "confidence": "low",
+            "confidence_reasons": ["Không có ý kiến nào thỏa điều kiện của câu hỏi."],
+            "citations": [],
+        },
+        "evidence": [],
+        "query_analysis": query.to_prompt_context(),
+        "retrieval_strategy": "filtered_no_data",
+        "statistics_plan": statistics_plan.to_prompt_context() if statistics_plan else {},
+        "statistics_result": statistics_result,
+        "vector_used": False,
+        "cache_hit": False,
+        "llm_used": False,
+        "llm_model": "",
+    }
+
+
+def _no_data_message(query: QueryAnalysis, reviews: list[dict[str, Any]]) -> str:
+    sentiment = {"negative": " tiêu cực", "positive": " tích cực", "neutral": " trung lập"}.get(query.sentiment or "", "")
+    about = ""
+    if query.target_aspects:
+        about = " về " + ", ".join(_aspect_label(aspect).lower() for aspect in query.target_aspects)
+    period = query.period_text()
+    if not period:
+        return f"Không có ý kiến{sentiment} nào{about} trong các review đã phân tích."
+    message = f"Không có ý kiến{sentiment} nào{about}{_period_phrase(period)}."
+    days = sorted(str(r["review_date"]) for r in reviews if r.get("review_date"))
+    if days:
+        first = date.fromisoformat(days[0])
+        last = date.fromisoformat(days[-1])
+        message += f" Các review đã phân tích của sản phẩm này được viết từ {first:%d/%m/%Y} đến {last:%d/%m/%Y}."
+    return message
+
+
+def _period_phrase(period: str) -> str:
+    """' trong tháng 12/2023' hoặc ' từ tháng 1 đến tháng 3/2022'."""
+    return f" {period}" if period.startswith("từ") else f" trong {period}"
+
+
+def _matches_query(item: dict[str, Any], query: QueryAnalysis) -> bool:
+    aspect = str(item.get("aspect") or item.get("category") or "")
+    sentiment = str(item.get("sentiment") or item.get("polarity") or "")
+    if query.target_aspects and aspect not in query.target_aspects:
+        return False
+    if query.sentiment and sentiment != query.sentiment:
+        return False
+    return query.in_period(item.get("review_date"))
+
+
+def _select_filtered_evidence(pool: list[dict[str, Any]], query: QueryAnalysis, limit: int) -> list[dict[str, Any]]:
+    """Chọn bằng chứng chỉ từ các ý kiến đã thỏa bộ lọc.
+
+    Câu rõ ý được ưu tiên, nhưng câu ngắn hay chung chung vẫn được giữ khi không
+    còn câu nào khác: thà ít bằng chứng đúng còn hơn lấp bằng ý kiến ngoài điều kiện.
+    """
+    ranked = select_evidence(pool, None, limit=len(pool))
+    quality = [row for row in ranked if _is_quality_evidence(row["aspect"], row["sentiment"], row["text"])]
+    quality_ids = {id(row) for row in quality}
+    others = [row for row in ranked if id(row) not in quality_ids]
+
+    picked: list[dict[str, Any]] = []
+    seen_texts: set[str] = set()
+    seen_reviews: set[str] = set()
+
+    def take(rows: list[dict[str, Any]], one_per_aspect: bool) -> None:
+        seen_aspects = {row["aspect_code"] for row in picked}
+        for row in rows:
+            if len(picked) >= limit:
+                return
+            key = _normalize_evidence_key(row["text"])
+            review_id = row["review_id"]
+            if not key or key in seen_texts or (review_id and review_id in seen_reviews):
+                continue
+            if one_per_aspect and row["aspect"] in seen_aspects:
+                continue
+            picked.append(_normalize_evidence_row(row))
+            seen_texts.add(key)
+            seen_aspects.add(row["aspect"])
+            if review_id:
+                seen_reviews.add(review_id)
+
+    if len(query.target_aspects) != 1:
+        take(quality, one_per_aspect=True)  # câu hỏi rộng: trải đều các chủ đề trước
+    take(quality, one_per_aspect=False)
+    take(others, one_per_aspect=False)
+    return picked
+
+
 def _retrieve_for_query(
     aspects: list[dict[str, Any]],
     risks: list[dict[str, Any]],
     query: QueryAnalysis,
     limit: int = 6,
 ) -> list[dict[str, Any]]:
+    if query.has_filters():
+        # Có điều kiện thì lọc cứng: không quay về toàn bộ ý kiến, không lấp chỗ trống.
+        pool = [item for item in aspects if _matches_query(item, query)]
+        return _select_filtered_evidence(pool, query, limit)
+
     target_aspects = set(query.target_aspects)
 
     if query.intent == "SUMMARY":
@@ -917,13 +1089,13 @@ def _fallback_structured_answer(
         *[_evidence_to_reason(row) for row in positive_evidence[:2]],
     ]
     cons = [
-        f"Cần lưu ý về {_aspect_names(top_neg)}." if top_neg else "",
-        f"Có tín hiệu cần xem kỹ về {risk_names}." if risk_names else "",
+        f"Khách chê nhiều nhất về {_aspect_names(top_neg)}." if top_neg else "",
+        f"Có phản hồi liên quan đến {risk_names}." if risk_names else "",
         *[_evidence_to_reason(row) for row in negative_evidence[:2]],
     ]
     if intent == "PRODUCT_FIT":
         baby_cons = [
-            f"Cần lưu ý về {_aspect_names(_baby_fit_rows(top_neg))}." if _baby_fit_rows(top_neg) else "",
+            f"Khách chê nhiều nhất về {_aspect_names(_baby_fit_rows(top_neg))}." if _baby_fit_rows(top_neg) else "",
             *[_evidence_to_reason(row) for row in _baby_fit_rows(negative_evidence)[:2]],
         ]
         operational_note = _join_nonempty([
@@ -931,7 +1103,7 @@ def _fallback_structured_answer(
             _aspect_names([row for row in top_neg if not _is_baby_fit_aspect(str(row.get("aspect") or ""))]),
         ])
         if operational_note != "chưa đủ dữ liệu":
-            baby_cons.append(f"Lưu ý khi mua/nhận hàng: {operational_note}.")
+            baby_cons.append(f"Khách cũng phản ánh về {operational_note}.")
         cons = baby_cons
     pros = [item for item in pros if item]
     cons = [item for item in cons if item]
@@ -955,15 +1127,12 @@ def _fallback_structured_answer(
     elif intent == "PRODUCT_FIT":
         fit_positive = _baby_fit_rows(positive_evidence) or _baby_fit_rows(top_pos) or positive_evidence[:2] or top_pos
         fit_aspects = _aspect_names(fit_positive)
-        summary = (
-            f"{name} có thể phù hợp với nhu cầu này nếu bé hợp với sản phẩm, "
-            f"vì review đang có tín hiệu tích cực về {fit_aspects}."
-        )
+        summary = f"Các review liên quan đến nhu cầu này có phản hồi tích cực về {fit_aspects}."
         recommendation = _specific_recommendation(conclusion, top_pos, top_neg, risks, intent)
     else:
         summary = (
-            f"Dựa trên các đánh giá hiện có, {name} nhìn chung có tín hiệu tốt về {_aspect_names(top_pos)}. "
-            f"Tuy nhiên, điểm cần lưu ý chính là {_aspect_names(top_neg)}."
+            f"Theo các đánh giá đã phân tích, khách khen {name} nhiều nhất về {_aspect_names(top_pos)} "
+            f"và chê nhiều nhất về {_aspect_names(top_neg)}."
         )
         recommendation = _specific_recommendation(conclusion, top_pos, top_neg, risks, intent)
 
@@ -988,18 +1157,12 @@ def _format_structured_answer(data: dict[str, Any], intent: str = "SUMMARY") -> 
             return f"{summary}\n\nNgười mua phàn nàn nhiều nhất về: {complaint}".strip()
         return summary
 
-    if intent in {"SUMMARY", "RECOMMENDATION", "PRODUCT_FIT"}:
-        recommendation = data["recommendation"].strip()
-        if recommendation and not _contains_meaning(summary, recommendation):
-            return f"{summary}\n\n{recommendation}".strip()
-        return summary
-
+    # Chatbot chỉ thuật lại khách nói gì, không đưa lời khuyên: không ghép trường
+    # "recommendation" vào câu trả lời.
     if intent in {"ASPECT_QA", "PRICE_VALUE", "DELIVERY_SERVICE", "RISK_CHECK", "PRODUCT_QA", "UNKNOWN"}:
         caution = _join_unique_phrases(data["cons"][:1])
-        recommendation = data["recommendation"].strip()
-        extra = recommendation or caution
-        if extra and not _contains_meaning(summary, extra):
-            return f"{summary}\n\n{extra}".strip()
+        if caution and not _contains_meaning(summary, caution):
+            return f"{summary}\n\n{caution}".strip()
         return summary
 
     return summary
@@ -1052,7 +1215,7 @@ def _sanitize_structured_answer(data: dict[str, Any], evidence: list[dict[str, A
         "summary": _clean_public_text(str(data.get("summary") or ""))[:600],
         "pros": [_clean_public_text(str(item))[:220] for item in (data.get("pros") or []) if item],
         "cons": [_clean_public_text(str(item))[:220] for item in (data.get("cons") or []) if item],
-        "recommendation": _clean_public_text(str(data.get("recommendation") or ""))[:300],
+        "recommendation": "",  # không đưa lời khuyên trong câu trả lời
         "confidence": str(data.get("confidence") or "medium").lower(),
         "confidence_reasons": [_clean_public_text(str(item))[:180] for item in (data.get("confidence_reasons") or []) if item],
         "citations": [],
@@ -1068,8 +1231,6 @@ def _sanitize_structured_answer(data: dict[str, Any], evidence: list[dict[str, A
         evidence_text = _summarize_opinion_text(str(citation.get("evidence") or ""))
         if evidence_text:
             out["citations"].append({"aspect": aspect[:80], "evidence": evidence_text[:180]})
-    if _is_generic_recommendation(out["recommendation"]):
-        out["recommendation"] = _recommendation_from_citations(out["citations"])
     if not out["summary"] or len(out["summary"].split()) < 5:
         out["summary"] = "Chưa có đủ dữ liệu để kết luận về sản phẩm này."
     if not out["confidence_reasons"]:
@@ -1077,31 +1238,12 @@ def _sanitize_structured_answer(data: dict[str, Any], evidence: list[dict[str, A
     return out
 
 
-def _is_generic_recommendation(text: str) -> bool:
-    normalized = text.lower().strip(" .")
-    generic_phrases = {
-        "nên cân nhắc thêm",
-        "nên xem xét",
-        "nên đọc kỹ review",
-        "nên đọc kỹ các điểm bị chê nhiều nhất",
-        "nên cân nhắc thêm trước khi mua",
-    }
-    return not normalized or normalized in generic_phrases
-
-
-def _recommendation_from_citations(citations: list[dict[str, str]]) -> str:
-    if not citations:
-        return "Chưa có đủ dữ liệu để kết luận; bạn nên ưu tiên sản phẩm có nhiều phản hồi rõ ràng hơn."
-    first = citations[0]
-    aspect = first.get("aspect") or "điểm được nhắc đến nhiều"
-    evidence = first.get("evidence") or "phản hồi hiện có chưa đủ rõ"
-    return f"Hãy quyết định dựa trên mức độ quan trọng của {aspect.lower()} với bé, vì evidence hiện có cho thấy: {evidence}"
-
-
 def _citations_from_evidence(evidence: list[dict[str, Any]]) -> list[dict[str, str]]:
     return [
         {
-            "aspect": str(row.get("aspect_label") or row.get("aspect") or "Bang chung"),
+            # Cùng bộ tên chủ đề với dashboard và câu trả lời.
+            "aspect": ASPECT_DISPLAY_NAMES.get(str(row.get("aspect_code") or row.get("aspect") or ""))
+            or str(row.get("aspect_label") or row.get("aspect") or "Bằng chứng"),
             "evidence": _summarize_opinion_text(str(row.get("text") or "")),
         }
         for row in evidence

@@ -5,6 +5,7 @@ from typing import Any, Optional
 from sqlalchemy import func
 
 from app.assistant.db import get_database_init_error, init_db, is_database_available, is_database_configured, session_scope
+from app.web.seller_summary import parse_review_date
 
 
 class V2Repository:
@@ -148,6 +149,7 @@ class V2Repository:
                         "rating": review.rating,
                         "content": review.content,
                         "clean_text": review.cleaned_content,
+                        "review_date": _review_day(review),
                     }
                     for review in reviews
                 ],
@@ -194,7 +196,7 @@ class V2Repository:
                 session.query(
                     AspectSentiment.category,
                     AspectSentiment.polarity,
-                    func.count(AspectSentiment.id).label("total"),
+                    func.count(func.distinct(AspectSentiment.review_id)).label("total"),
                     func.avg(AspectSentiment.confidence).label("avg_confidence"),
                 )
                 .filter(AspectSentiment.product_id == product_db_id)
@@ -268,9 +270,15 @@ class V2Repository:
                 .filter(Review.product_id == product_db_id)
                 .scalar()
             )
+            # Số ý kiến sau loại trùng (review, chủ đề, cảm xúc), khớp với dashboard.
             aspect_count = (
-                session.query(func.count(AspectSentiment.id))
-                .filter(AspectSentiment.product_id == product_db_id)
+                session.query(func.count())
+                .select_from(
+                    session.query(AspectSentiment.review_id, AspectSentiment.category, AspectSentiment.polarity)
+                    .filter(AspectSentiment.product_id == product_db_id)
+                    .distinct()
+                    .subquery()
+                )
                 .scalar()
             )
             avg_rating = (
@@ -296,12 +304,12 @@ class V2Repository:
             rows = (
                 session.query(
                     AspectSentiment.category,
-                    func.count(AspectSentiment.id).label("total"),
+                    func.count(func.distinct(AspectSentiment.review_id)).label("total"),
                     func.avg(AspectSentiment.confidence).label("avg_confidence"),
                 )
                 .filter(AspectSentiment.product_id == product_db_id, AspectSentiment.polarity == sentiment)
                 .group_by(AspectSentiment.category)
-                .order_by(func.count(AspectSentiment.id).desc())
+                .order_by(func.count(func.distinct(AspectSentiment.review_id)).desc())
                 .limit(limit)
                 .all()
             )
@@ -346,7 +354,15 @@ def _aspect_context_row(item: Any, review_by_id: dict[int, Any], reviews: list[A
         "sentiment": item.polarity,
         "confidence": item.confidence,
         "sentence": item.sentence,
+        "review_date": _review_day(review) if review is not None else None,
+        "rating": review.rating if review is not None else None,
     }
+
+
+def _review_day(review: Any) -> Optional[str]:
+    """Ngày viết review theo giờ Việt Nam (ISO), cùng cách đọc với dashboard."""
+    parsed = parse_review_date(getattr(review, "created_at_tiki", None))
+    return parsed.date().isoformat() if parsed else None
 
 
 def _normalize_match_text(value: str) -> str:

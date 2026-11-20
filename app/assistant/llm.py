@@ -2,6 +2,7 @@
 
 import json
 import re
+import time
 from typing import Any
 
 import requests
@@ -111,26 +112,47 @@ class GeminiChatClient:
                 "maxOutputTokens": settings.llm_max_output_tokens,
             },
         }
-        try:
-            response = requests.post(
-                url,
-                headers={
-                    "x-goog-api-key": settings.gemini_api_key,
-                    "Content-Type": "application/json",
-                },
-                json=payload,
-                timeout=60,
-            )
-            response.raise_for_status()
-        except Exception as exc:
-            raise LLMError(f"Gemini request failed: {exc}") from exc
+        if self.model.startswith("gemini-2.5") and settings.gemini_thinking_budget >= 0:
+            payload["generationConfig"]["thinkingConfig"] = {"thinkingBudget": settings.gemini_thinking_budget}
+        attempt = 0
+        while True:
+            try:
+                response = requests.post(
+                    url,
+                    headers={
+                        "x-goog-api-key": settings.gemini_api_key,
+                        "Content-Type": "application/json",
+                    },
+                    json=payload,
+                    timeout=60,
+                )
+                if response.status_code == 429 and attempt < settings.llm_retry_on_429:
+                    wait = _retry_delay_seconds(response)
+                    # Chờ quá lâu nghĩa là hết hạn mức trong ngày: thử lại cũng vô ích.
+                    if wait is not None and wait <= MAX_RETRY_WAIT_SECONDS:
+                        attempt += 1
+                        print(f"[LLM] Gemini 429, chờ {wait:.0f}s rồi thử lại ({attempt}/{settings.llm_retry_on_429})")
+                        time.sleep(wait)
+                        continue
+                response.raise_for_status()
+                break
+            except Exception as exc:
+                raise LLMError(f"Gemini request failed: {exc}") from exc
 
         data = response.json()
         try:
-            parts = data["candidates"][0]["content"]["parts"]
+            candidate = data["candidates"][0]
+            parts = candidate["content"]["parts"]
             text = "".join(str(part.get("text") or "") for part in parts)
         except Exception as exc:
             raise LLMError(f"Gemini response did not contain text: {str(data)[:200]}") from exc
+        if candidate.get("finishReason") == "MAX_TOKENS":
+            usage = data.get("usageMetadata") or {}
+            raise LLMError(
+                "Gemini bị cắt vì hết token (LLM_MAX_OUTPUT_TOKENS="
+                f"{settings.llm_max_output_tokens}, suy nghĩ={usage.get('thoughtsTokenCount')}, "
+                f"trả lời={usage.get('candidatesTokenCount')})"
+            )
         return _strip_thinking(text)
 
     def generate_json(self, system_prompt: str, user_prompt: str) -> dict[str, Any]:
@@ -142,6 +164,26 @@ class GeminiChatClient:
 
 
 GroqLlamaClient = GroqChatClient
+
+MAX_RETRY_WAIT_SECONDS = 60
+
+
+def _retry_delay_seconds(response: requests.Response) -> float | None:
+    """Thời gian Gemini yêu cầu chờ sau lỗi 429 (header Retry-After hoặc RetryInfo trong body)."""
+    header = response.headers.get("Retry-After")
+    if header:
+        try:
+            return float(header)
+        except ValueError:
+            pass
+    try:
+        for detail in response.json().get("error", {}).get("details", []):
+            delay = str(detail.get("retryDelay") or "")
+            if delay.endswith("s"):
+                return float(delay[:-1]) + 1
+    except Exception:
+        return None
+    return 15.0  # 429 không kèm thời gian chờ: thường là giới hạn theo phút
 
 
 def _strip_thinking(text: str) -> str:

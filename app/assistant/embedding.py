@@ -1,5 +1,7 @@
 ﻿from __future__ import annotations
 
+import threading
+
 from app.assistant.config import settings
 
 
@@ -35,7 +37,31 @@ class EmbeddingService:
 
     def _load_model(self):
         if self._model is None:
+            self._model = load_shared_embedding_model(self.model_name)
+        return self._model
+
+
+# Dashboard (ghi vector khi phân tích) và trợ lý (tìm kiếm) mỗi bên tạo một EmbeddingService;
+# dùng chung một bản model để không nạp hai lần (bge-m3 ~2,3 GB, nạp mất hơn một phút).
+_SHARED_MODELS: dict[tuple[str, str], object] = {}
+_SHARED_LOCK = threading.Lock()
+
+
+def load_shared_embedding_model(model_name: str):
+    from app.assistant.reranker import resolve_device
+
+    device = resolve_device(settings.embedding_device)
+    key = (model_name, device)
+    with _SHARED_LOCK:  # luồng nạp sẵn lúc khởi động và request đầu tiên không nạp trùng
+        model = _SHARED_MODELS.get(key)
+        if model is None:
             from sentence_transformers import SentenceTransformer
 
-            self._model = SentenceTransformer(self.model_name)
-        return self._model
+            kwargs: dict = {"device": device}
+            if device.startswith("cuda"):
+                import torch
+
+                kwargs["model_kwargs"] = {"dtype": torch.float16}
+            model = SentenceTransformer(model_name, **kwargs)
+            _SHARED_MODELS[key] = model
+        return model

@@ -47,7 +47,10 @@ class HybridRetrievalService:
         query: QueryAnalysis,
         structured_evidence: list[dict[str, Any]],
         limit: int = 6,
+        allowed_review_ids: set[str] | None = None,
     ) -> dict[str, Any]:
+        """allowed_review_ids: khi câu hỏi có khoảng thời gian, chỉ giữ ý kiến của các
+        review này. Bảng vector chưa có cột ngày nên lọc sau khi tìm."""
         if not settings.hybrid_retrieval_enabled:
             return {
                 "strategy": "postgres_only",
@@ -68,15 +71,19 @@ class HybridRetrievalService:
         if settings.reranker_enabled:
             vector_limit = max(vector_limit, settings.reranker_top_k)
         vector_rows = self._search_vector(product_id, question, query, limit=vector_limit)
+        if allowed_review_ids is not None:
+            vector_rows = [row for row in vector_rows if str(row.get("review_id") or "") in allowed_review_ids]
         vector_rows = self.reranker.rerank(_build_rerank_query(question, query), vector_rows, limit=vector_limit)
-        if self.reranker.last_used:
-            filtered = [
-                row for row in vector_rows
-                if float(row.get("reranker_score") or 0.0) >= settings.reranker_min_score
-            ]
-            vector_rows = filtered or vector_rows[:1]
+        if self.reranker.last_used and not query.has_filters():
+            # Có lọc cứng thì mọi dòng đều đúng điều kiện: reranker chỉ dùng để xếp thứ tự.
+            vector_rows = _keep_relevant(vector_rows)
 
-        if strategy == "postgres_first":
+        if vector_rows and query.intent in SEMANTIC_INTENTS and not query.has_filters():
+            # Câu hỏi tra cứu không có điều kiện lọc: ý kiến SQL lúc này chỉ là các ý kiến
+            # nổi bật chung của sản phẩm, không liên quan câu hỏi, nên không dùng để lấp chỗ.
+            strategy = "vector_only"
+            merged = _dedupe_by_review(vector_rows)
+        elif strategy == "postgres_first":
             merged = _hybrid_rank(
                 structured_evidence + vector_rows,
                 query=query,
@@ -90,6 +97,16 @@ class HybridRetrievalService:
                 qdrant_weight=0.65,
                 structured_weight=0.35,
             )
+
+        if self.reranker.last_used and _is_topic_lookup(query):
+            # Hỏi tra cứu theo chủ đề ("thấm hút ra sao"): có hàng chục ý kiến cùng chủ đề, câu nào
+            # trả lời đúng câu hỏi do reranker quyết định, không phải độ tự tin của nhãn chủ đề.
+            # Câu thống kê (lọc khen/chê hoặc thời gian) giữ cách xếp theo hybrid_score.
+            merged = sorted(merged, key=lambda row: float(row.get("reranker_score") or -1.0), reverse=True)
+        if query.has_filters():
+            # Mọi dòng đều đúng điều kiện; reranker lại ưu tiên câu ngắn chung chung
+            # ("Không hài lòng.") nên đưa câu có nội dung cụ thể lên trước.
+            merged = _informative_first(merged)
 
         result = {
             "strategy": strategy,
@@ -107,8 +124,12 @@ class HybridRetrievalService:
         query: QueryAnalysis,
         limit: int,
     ) -> list[dict[str, Any]]:
-        sentiments = _sentiments_for_intent(query.intent)
+        sentiment = getattr(query, "sentiment", None)
+        sentiments = [sentiment] if sentiment else _sentiments_for_intent(query.intent)
         aspects = query.target_aspects or None
+        # Đã lọc cứng theo chủ đề/cảm xúc thì mọi dòng đều đúng điều kiện; ngưỡng cosine
+        # chỉ làm mất dòng đúng (câu hỏi và câu review khác dạng nên cosine thấp).
+        min_score = 0.0 if (aspects or sentiment) else None
         if query.intent == "PRODUCT_FIT" and aspects and len(aspects) > 1:
             per_aspect = max(2, limit // len(aspects))
             groups = [
@@ -118,6 +139,7 @@ class HybridRetrievalService:
                     limit=per_aspect,
                     sentiments=sentiments,
                     aspects=[aspect],
+                    min_score=min_score,
                 )
                 for aspect in aspects
             ]
@@ -130,6 +152,7 @@ class HybridRetrievalService:
                 limit=limit,
                 sentiments=sentiments,
                 aspects=aspects,
+                min_score=min_score,
             )
             return _merge_unique([rows, broad], limit=limit)
         return self.vector_store.search(
@@ -138,7 +161,52 @@ class HybridRetrievalService:
             limit=limit,
             sentiments=sentiments,
             aspects=aspects,
+            min_score=min_score,
         )
+
+
+def _is_topic_lookup(query: QueryAnalysis) -> bool:
+    return bool(
+        query.target_aspects
+        and query.intent in SEMANTIC_INTENTS
+        and not getattr(query, "sentiment", None)
+        and not getattr(query, "date_from", None)
+    )
+
+
+def _keep_relevant(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Rows đã sắp theo reranker_score giảm dần. Giữ dòng đạt ngưỡng tuyệt đối, hoặc
+    đạt tỷ lệ RERANKER_RELATIVE_CUTOFF so với dòng tốt nhất."""
+    if not rows:
+        return rows
+    top = float(rows[0].get("reranker_score") or 0.0)
+    cutoff = min(settings.reranker_min_score, top * settings.reranker_relative_cutoff)
+    return [row for row in rows if float(row.get("reranker_score") or 0.0) >= cutoff]
+
+
+def _is_informative(text: str) -> bool:
+    text = " ".join(str(text or "").split())
+    return len(text) >= 28 and len(text.split()) >= 5
+
+
+def _informative_first(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Giữ nguyên thứ tự xếp hạng trong từng nhóm; câu quá ngắn chỉ dùng khi thiếu."""
+    return [row for row in rows if _is_informative(row.get("text"))] + [
+        row for row in rows if not _is_informative(row.get("text"))
+    ]
+
+
+def _dedupe_by_review(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Một câu review được lưu một dòng cho mỗi chủ đề; giữ dòng đầu, theo thứ tự xếp hạng."""
+    out: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for row in rows:
+        key = str(row.get("review_id") or "") or _text_key(str(row.get("text") or ""))
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(row)
+    return out
 
 
 def _sentiments_for_intent(intent: str) -> list[str] | None:
@@ -211,7 +279,9 @@ def _hybrid_rank(
         key = str(row.get("review_id") or "") or _text_key(text)
         current = deduped.get(key)
         scored = {**row, "hybrid_score": _score_row(row, query, qdrant_weight, structured_weight)}
-        if current is None or scored["hybrid_score"] > current.get("hybrid_score", 0):
+        # Cùng một review: giữ câu có nội dung cụ thể trước, rồi mới xét điểm.
+        rank = (_is_informative(text), scored["hybrid_score"])
+        if current is None or rank > (_is_informative(current.get("text")), current.get("hybrid_score", 0)):
             deduped[key] = scored
     out = list(deduped.values())
     out.sort(key=lambda row: row.get("hybrid_score", 0), reverse=True)
@@ -249,6 +319,9 @@ def _cache_key(product_id: str, question: str, query: QueryAnalysis) -> str:
         "question": str(question).strip().lower(),
         "intent": query.intent,
         "aspects": query.target_aspects,
+        "sentiment": getattr(query, "sentiment", None),
+        "date_from": getattr(query, "date_from", None),
+        "date_to": getattr(query, "date_to", None),
     }, ensure_ascii=False, sort_keys=True)
     return "retrieval:" + hashlib.sha1(raw.encode("utf-8")).hexdigest()
 

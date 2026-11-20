@@ -1,78 +1,134 @@
 {
-  "an toan": {
-    "aspects": ["PRODUCT#SAFETY"],
-    "constraints": ["safety"]
-  },
-  "da nhay cam": {
-    "aspects": ["PRODUCT#SAFETY", "PRODUCT#MATERIAL", "PRODUCT#SCENT"],
-    "constraints": ["sensitive_skin"]
-  },
-  "kich ung": {
-    "aspects": ["PRODUCT#SAFETY", "PRODUCT#MATERIAL"],
-    "constraints": ["irritation"]
-  },
-  "ham": {
-    "aspects": ["PRODUCT#SAFETY", "PRODUCT#MATERIAL", "PRODUCT#COMFORT"],
-    "constraints": ["rash"]
-  },
-  "mui": {
-    "aspects": ["PRODUCT#SCENT", "PRODUCT#MATERIAL"],
-    "constraints": ["smell"]
-  },
-  "chat lieu": {
-    "aspects": ["PRODUCT#MATERIAL"],
-    "constraints": ["material"]
-  },
-  "chat luong": {
-    "aspects": ["PRODUCT#QUALITY"],
-    "constraints": ["quality"]
-  },
-  "mem": {
-    "aspects": ["PRODUCT#MATERIAL", "PRODUCT#COMFORT"],
-    "constraints": ["softness"]
-  },
-  "bi tran": {
-    "aspects": ["PRODUCT#ABSORPTION", "PRODUCT#FUNCTION"],
-    "constraints": ["leakage"]
-  },
-  "tham hut": {
-    "aspects": ["PRODUCT#ABSORPTION", "PRODUCT#FUNCTION"],
-    "constraints": ["absorption"]
-  },
-  "size": {
-    "aspects": ["PRODUCT#SIZE"],
-    "constraints": ["size_fit"]
-  },
-  "vua": {
-    "aspects": ["PRODUCT#SIZE", "PRODUCT#COMFORT"],
-    "constraints": ["fit"]
-  },
-  "gia": {
-    "aspects": ["PRICE#AFFORDABILITY"],
-    "constraints": ["price"]
-  },
-  "dang tien": {
-    "aspects": ["PRICE#AFFORDABILITY", "PRODUCT#QUALITY", "PRODUCT#VALUE"],
-    "constraints": ["value_for_money"]
-  },
-  "giao hang": {
-    "aspects": ["DELIVERY#SPEED", "DELIVERY#PACKAGING"],
-    "constraints": ["delivery"]
-  },
-  "ship": {
-    "aspects": ["DELIVERY#SPEED", "DELIVERY#PACKAGING"],
-    "constraints": ["delivery"]
-  },
-  "dong goi": {
-    "aspects": ["DELIVERY#PACKAGING"],
-    "constraints": ["packaging"]
-  },
-  "chinh hang": {
-    "aspects": ["SELLER#AUTHENTICITY"],
-    "constraints": ["authenticity"]
-  },
-  "fake": {
-    "aspects": ["SELLER#AUTHENTICITY"],
-    "constraints": ["authenticity"]
-  }
+  "an toàn": {"aspects": ["PRODUCT#SAFETY"]},
+  "kích ứng": {"aspects": ["PRODUCT#SAFETY"]},
+  "dị ứng": {"aspects": ["PRODUCT#SAFETY"]},
+  "hăm": {"aspects": ["PRODUCT#SAFETY"]},
+  "mẩn đỏ": {"aspects": ["PRODUCT#SAFETY"]},
+  "độc hại": {"aspects": ["PRODUCT#SAFETY"]},
+  "da nhạy cảm": {"aspects": ["PRODUCT#SAFETY", "PRODUCT#MATERIAL"]},
+
+  "chất liệu": {"aspects": ["PRODUCT#MATERIAL"]},
+  "độ dày": {"aspects": ["PRODUCT#MATERIAL"]},
+  "mùi": {"aspects": ["PRODUCT#MATERIAL", "PRODUCT#QUALITY"]},
+  "mềm": {"aspects": ["PRODUCT#MATERIAL", "PRODUCT#COMFORT"]},
+
+  "chất lượng": {"aspects": ["PRODUCT#QUALITY"]},
+  "chất lượng sản phẩm": {"aspects": ["PRODUCT#QUALITY"]},
+  "hạn sử dụng": {"aspects": ["PRODUCT#QUALITY"]},
+  "date": {"aspects": ["PRODUCT#QUALITY"]},
+  "độ đặc": {"aspects": ["PRODUCT#QUALITY"]},
+  "đậm đặc": {"aspects": ["PRODUCT#QUALITY"]},
+  "loãng": {"aspects": ["PRODUCT#QUALITY"]},
+  "độ hoàn thiện": {"aspects": ["PRODUCT#QUALITY"]},
+
+  "cảm giác": {"aspects": ["PRODUCT#COMFORT"]},
+  "thoải mái": {"aspects": ["PRODUCT#COMFORT"]},
+  "dễ chịu": {"aspects": ["PRODUCT#COMFORT"]},
+  "êm ái": {"aspects": ["PRODUCT#COMFORT"]},
+  "độ êm": {"aspects": ["PRODUCT#COMFORT"]},
+
+  "thấm hút": {"aspects": ["PRODUCT#FUNCTION"]},
+  "bị tràn": {"aspects": ["PRODUCT#FUNCTION"]},
+  "chống tràn": {"aspects": ["PRODUCT#FUNCTION"]},
+  "công dụng": {"aspects": ["PRODUCT#FUNCTION"]},
+  "tính năng": {"aspects": ["PRODUCT#FUNCTION"]},
+  "công năng": {"aspects": ["PRODUCT#FUNCTION"]},
+  "dễ rút": {"aspects": ["PRODUCT#FUNCTION"]},
+  "rút khăn": {"aspects": ["PRODUCT#FUNCTION"]},
+
+  "size": {"aspects": ["PRODUCT#SIZE"]},
+  "kích thước": {"aspects": ["PRODUCT#SIZE"]},
+  "kích cỡ": {"aspects": ["PRODUCT#SIZE"]},
+  "vừa vặn": {"aspects": ["PRODUCT#SIZE"]},
+
+  "độ bền": {"aspects": ["PRODUCT#DURABILITY"]},
+  "nhanh hỏng": {"aspects": ["PRODUCT#DURABILITY"]},
+  "bị hỏng": {"aspects": ["PRODUCT#DURABILITY"]},
+
+  "thiết kế": {"aspects": ["PRODUCT#DESIGN"]},
+  "mẫu mã": {"aspects": ["PRODUCT#DESIGN"]},
+  "kiểu dáng": {"aspects": ["PRODUCT#DESIGN"]},
+  "màu sắc": {"aspects": ["PRODUCT#DESIGN"]},
+  "hình thức": {"aspects": ["PRODUCT#DESIGN"]},
+  "ngoại quan": {"aspects": ["PRODUCT#DESIGN"]},
+
+  "đáng tiền": {"aspects": ["PRODUCT#VALUE"]},
+  "xứng đáng": {"aspects": ["PRODUCT#VALUE"]},
+  "giá trị": {"aspects": ["PRODUCT#VALUE"]},
+
+  "giá": {"aspects": ["PRICE#AFFORDABILITY"]},
+  "giá cả": {"aspects": ["PRICE#AFFORDABILITY"]},
+  "giá tiền": {"aspects": ["PRICE#AFFORDABILITY"]},
+  "mức giá": {"aspects": ["PRICE#AFFORDABILITY"]},
+  "giá rẻ": {"aspects": ["PRICE#AFFORDABILITY"]},
+
+  "khuyến mãi": {"aspects": ["PRICE#DISCOUNT"]},
+  "giảm giá": {"aspects": ["PRICE#DISCOUNT"]},
+  "ưu đãi": {"aspects": ["PRICE#DISCOUNT"]},
+  "sale": {"aspects": ["PRICE#DISCOUNT"]},
+  "voucher": {"aspects": ["PRICE#DISCOUNT"]},
+  "mã giảm": {"aspects": ["PRICE#DISCOUNT"]},
+  "quà tặng": {"aspects": ["PRICE#DISCOUNT"]},
+
+  "giao hàng": {"aspects": ["DELIVERY#SPEED", "DELIVERY#PACKAGING", "DELIVERY#ACCURACY"]},
+  "vận chuyển": {"aspects": ["DELIVERY#SPEED", "DELIVERY#PACKAGING", "DELIVERY#ACCURACY"]},
+  "ship": {"aspects": ["DELIVERY#SPEED", "DELIVERY#PACKAGING", "DELIVERY#ACCURACY"]},
+  "dịch vụ giao hàng": {"aspects": ["DELIVERY#SPEED", "DELIVERY#PACKAGING", "DELIVERY#ACCURACY"]},
+
+  "tốc độ giao hàng": {"aspects": ["DELIVERY#SPEED"]},
+  "thời gian giao": {"aspects": ["DELIVERY#SPEED"]},
+  "thời gian vận chuyển": {"aspects": ["DELIVERY#SPEED"]},
+  "chậm trễ": {"aspects": ["DELIVERY#SPEED"]},
+  "giao hàng nhanh": {"aspects": ["DELIVERY#SPEED"]},
+  "giao hàng chậm": {"aspects": ["DELIVERY#SPEED"]},
+  "giao hàng lâu": {"aspects": ["DELIVERY#SPEED"]},
+  "giao nhanh": {"aspects": ["DELIVERY#SPEED"]},
+  "giao chậm": {"aspects": ["DELIVERY#SPEED"]},
+  "giao lâu": {"aspects": ["DELIVERY#SPEED"]},
+  "giao trễ": {"aspects": ["DELIVERY#SPEED"]},
+  "ship nhanh": {"aspects": ["DELIVERY#SPEED"]},
+  "ship chậm": {"aspects": ["DELIVERY#SPEED"]},
+  "ship lâu": {"aspects": ["DELIVERY#SPEED"]},
+  "tới trễ": {"aspects": ["DELIVERY#SPEED"]},
+  "phải chờ": {"aspects": ["DELIVERY#SPEED"]},
+  "mới nhận hàng": {"aspects": ["DELIVERY#SPEED"]},
+  "nhận hàng lâu": {"aspects": ["DELIVERY#SPEED"]},
+
+  "đóng gói": {"aspects": ["DELIVERY#PACKAGING"]},
+  "bao bì": {"aspects": ["DELIVERY#PACKAGING"]},
+  "gói hàng": {"aspects": ["DELIVERY#PACKAGING"]},
+  "chống sốc": {"aspects": ["DELIVERY#PACKAGING"]},
+  "bọc hàng": {"aspects": ["DELIVERY#PACKAGING"]},
+
+  "giao thiếu": {"aspects": ["DELIVERY#ACCURACY"]},
+  "giao nhầm": {"aspects": ["DELIVERY#ACCURACY"]},
+  "giao sai": {"aspects": ["DELIVERY#ACCURACY"]},
+  "thiếu hàng": {"aspects": ["DELIVERY#ACCURACY"]},
+  "thiếu gói": {"aspects": ["DELIVERY#ACCURACY"]},
+  "nhầm hàng": {"aspects": ["DELIVERY#ACCURACY"]},
+  "sai hàng": {"aspects": ["DELIVERY#ACCURACY"]},
+  "giao đủ": {"aspects": ["DELIVERY#ACCURACY"]},
+  "giao đúng": {"aspects": ["DELIVERY#ACCURACY"]},
+  "độ chính xác": {"aspects": ["DELIVERY#ACCURACY"]},
+
+  "dịch vụ": {"aspects": ["SELLER#SERVICE"]},
+  "shop": {"aspects": ["SELLER#SERVICE"]},
+  "người bán": {"aspects": ["SELLER#SERVICE"]},
+  "nhà bán": {"aspects": ["SELLER#SERVICE"]},
+  "tư vấn": {"aspects": ["SELLER#SERVICE"]},
+  "thái độ": {"aspects": ["SELLER#SERVICE"]},
+  "chăm sóc khách hàng": {"aspects": ["SELLER#SERVICE"]},
+
+  "shop phản hồi": {"aspects": ["SELLER#RESPONSIVENESS"]},
+  "trả lời tin nhắn": {"aspects": ["SELLER#RESPONSIVENESS"]},
+  "hỗ trợ": {"aspects": ["SELLER#RESPONSIVENESS"]},
+  "liên hệ": {"aspects": ["SELLER#RESPONSIVENESS"]},
+  "đổi trả": {"aspects": ["SELLER#RESPONSIVENESS"]},
+
+  "chính hãng": {"aspects": ["SELLER#AUTHENTICITY"]},
+  "hàng giả": {"aspects": ["SELLER#AUTHENTICITY"]},
+  "hàng nhái": {"aspects": ["SELLER#AUTHENTICITY"]},
+  "fake": {"aspects": ["SELLER#AUTHENTICITY"]},
+  "nguồn gốc": {"aspects": ["SELLER#AUTHENTICITY"]},
+  "xuất xứ": {"aspects": ["SELLER#AUTHENTICITY"]}
 }

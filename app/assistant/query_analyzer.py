@@ -3,11 +3,14 @@ from __future__ import annotations
 import json
 import re
 import unicodedata
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
+from datetime import date
 from pathlib import Path
 from typing import Any
 
 from app.assistant.llm import LLMError
+from app.web.constants import ASPECT_DISPLAY_NAMES
+from app.assistant.time_parser import FUZZY_MARKERS, describe_period, extract_time_range, fold
 
 
 ALLOWED_INTENTS = {
@@ -23,23 +26,21 @@ ALLOWED_INTENTS = {
     "UNKNOWN",
 }
 
-ALLOWED_ASPECTS = {
-    "PRODUCT#SAFETY",
-    "PRODUCT#MATERIAL",
-    "PRODUCT#SCENT",
-    "PRODUCT#SIZE",
-    "PRODUCT#ABSORPTION",
-    "PRODUCT#FUNCTION",
-    "PRODUCT#QUALITY",
-    "PRODUCT#VALUE",
-    "PRODUCT#DURABILITY",
-    "PRODUCT#COMFORT",
-    "PRICE#AFFORDABILITY",
-    "DELIVERY#SPEED",
-    "DELIVERY#PACKAGING",
-    "DELIVERY#ACCURACY",
-    "SELLER#AUTHENTICITY",
-}
+# Đúng 17 chủ đề mà PhoBERT gán nhãn; chủ đề ngoài danh sách này không có dữ liệu để lọc.
+ALLOWED_ASPECTS = set(ASPECT_DISPLAY_NAMES)
+
+# Cụm chứa từ khóa nhưng không mang nghĩa chủ đề ("đánh giá" chứa "giá").
+BLOCKING_PHRASES = ["danh gia"]
+
+
+# Cụm từ cho biết người hỏi muốn lọc theo cảm xúc. Chỉ dùng cụm rõ nghĩa;
+# câu hỏi kiểu "có tốt không" là hỏi đánh giá chứ không phải lọc ý kiến tích cực.
+NEGATIVE_FILTER_PHRASES = [
+    "che", "phan nan", "khong hai long", "tieu cuc", "diem yeu", "phan anh", "than phien", "khieu nai",
+    "chua tot", "khong tot", "chua hai long", "nhuoc diem", "han che", "diem tru",
+]
+POSITIVE_FILTER_PHRASES = ["khen", "tich cuc", "uu diem", "diem manh", "hai long"]
+NEUTRAL_FILTER_PHRASES = ["trung lap"]
 
 
 @dataclass(frozen=True)
@@ -48,6 +49,11 @@ class QueryAnalysis:
     target_aspects: list[str] = field(default_factory=list)
     constraints: list[str] = field(default_factory=list)
     source: str = "rule"
+    # Bộ lọc dùng chung cho thống kê, bằng chứng và tìm vector.
+    sentiment: str | None = None
+    date_from: str | None = None  # ISO, tính cả hai đầu
+    date_to: str | None = None
+    time_expression: str = ""
 
     def to_prompt_context(self) -> dict[str, Any]:
         return {
@@ -55,7 +61,32 @@ class QueryAnalysis:
             "target_aspects": self.target_aspects,
             "constraints": self.constraints,
             "source": self.source,
+            "sentiment": self.sentiment,
+            "date_from": self.date_from,
+            "date_to": self.date_to,
+            "time_expression": self.time_expression,
         }
+
+    def has_filters(self) -> bool:
+        return bool(self.target_aspects or self.sentiment or self.date_from)
+
+    def in_period(self, day: date | str | None) -> bool:
+        """True nếu không lọc thời gian, hoặc ngày nằm trong khoảng đã lọc."""
+        if not self.date_from:
+            return True
+        if not day:
+            return False
+        value = str(day)[:10]
+        return self.date_from <= value <= str(self.date_to)
+
+    def period_text(self) -> str:
+        period = describe_period(self.date_from, self.date_to)
+        expression = self.time_expression.strip()
+        if period and expression and (FUZZY_MARKERS.search(fold(expression)) or not re.search(r"\d", expression)):
+            # "đầu năm 2023", "năm ngoái" được quy thành một khoảng ngày: giữ cách nói của người hỏi
+            # và nêu khoảng ngày đã lọc, ví dụ "năm ngoái (năm 2025)".
+            return f"{expression[0].lower()}{expression[1:]} ({period})"
+        return period
 
 
 class QueryAnalyzer:
@@ -65,47 +96,47 @@ class QueryAnalyzer:
         self.llm = llm
 
     def analyze(self, question: str) -> QueryAnalysis:
-        llm_result = self._analyze_by_llm(question)
-        if llm_result:
-            return llm_result
         normalized = normalize_text(question)
-        rule_result = self._analyze_by_rule(normalized)
-        return rule_result
+        rule = self._analyze_by_rule(normalized)
+        llm = self._analyze_by_llm(question)
+        # Chủ đề luôn lấy theo luật: mỗi chủ đề phải có một cụm trong câu hỏi làm căn cứ.
+        # LLM chỉ góp phần nhận diện loại câu hỏi (intent); để LLM tự gán chủ đề từng biến
+        # "khăn có bị khô không" thành câu hỏi về chất lượng chung.
+        result = replace(llm, target_aspects=rule.target_aspects) if llm else rule
+        return attach_filters(question, result)
+
+    def match_aspects(self, normalized: str) -> list[str]:
+        """Khớp cụm dài nhất trước; vùng chữ đã khớp không được dùng lại cho cụm ngắn hơn.
+
+        Nhờ vậy "tốc độ giao hàng" chỉ là DELIVERY#SPEED, còn "giao hàng" (nói chung)
+        là cả nhóm giao hàng.
+        """
+        candidates: list[tuple[int, int, list[str]]] = []
+        for phrase in [*self.mapping, *BLOCKING_PHRASES]:
+            aspects = (self.mapping.get(phrase) or {}).get("aspects") or []
+            for m in re.finditer(rf"(?<![a-z0-9]){re.escape(phrase)}(?![a-z0-9])", normalized):
+                candidates.append((m.start(), m.end(), aspects))
+        candidates.sort(key=lambda c: (-(c[1] - c[0]), c[0]))
+        taken: list[tuple[int, int]] = []
+        matched: list[tuple[int, list[str]]] = []
+        for start, end, aspects in candidates:
+            if any(start < t_end and t_start < end for t_start, t_end in taken):
+                continue
+            taken.append((start, end))
+            matched.append((start, aspects))
+        out: list[str] = []
+        for _, aspects in sorted(matched, key=lambda m: m[0]):
+            for aspect in aspects:
+                if aspect in ALLOWED_ASPECTS and aspect not in out:
+                    out.append(aspect)
+        return out
 
     def _analyze_by_rule(self, normalized: str) -> QueryAnalysis:
         intent = _detect_intent(normalized)
-        aspects: list[str] = []
-        constraints: list[str] = []
-
-        for phrase, config in self.mapping.items():
-            if _mapping_phrase_in_text(phrase, normalized):
-                for aspect in config.get("aspects") or []:
-                    if aspect in ALLOWED_ASPECTS and aspect not in aspects:
-                        aspects.append(aspect)
-                for constraint in config.get("constraints") or []:
-                    if constraint not in constraints:
-                        constraints.append(str(constraint))
-
-        if intent != "PRODUCT_FIT" and aspects and _is_aspect_question(normalized):
+        aspects = self.match_aspects(normalized)
+        if aspects and intent in {"PRODUCT_QA", "COMPLAINT_SUMMARY", "PRICE_VALUE", "DELIVERY_SERVICE"}:
             intent = "ASPECT_QA"
-
-        if intent == "PRICE_VALUE":
-            aspects = _merge_aspects(aspects, ["PRICE#AFFORDABILITY", "PRODUCT#VALUE", "PRODUCT#QUALITY"])
-        elif intent == "DELIVERY_SERVICE":
-            aspects = _merge_aspects(aspects, ["DELIVERY#SPEED", "DELIVERY#PACKAGING", "DELIVERY#ACCURACY"])
-        elif intent == "RISK_CHECK":
-            aspects = _merge_aspects(aspects, ["PRODUCT#SAFETY", "PRODUCT#MATERIAL", "SELLER#AUTHENTICITY"])
-        elif intent == "PRODUCT_FIT" and not aspects:
-            aspects = ["PRODUCT#SAFETY", "PRODUCT#MATERIAL", "PRODUCT#SIZE"]
-        elif intent in {"PRODUCT_QA", "COMPLAINT_SUMMARY"} and aspects:
-            intent = "ASPECT_QA"
-
-        return QueryAnalysis(
-            intent=intent,
-            target_aspects=aspects,
-            constraints=constraints,
-            source="rule",
-        )
+        return QueryAnalysis(intent=intent, target_aspects=aspects, source="rule")
 
     def _analyze_by_llm(self, question: str) -> QueryAnalysis | None:
         if self.llm is None or not self.llm.is_configured():
@@ -126,6 +157,38 @@ class QueryAnalyzer:
         except LLMError:
             return None
         return _coerce_llm_result(raw)
+
+
+def attach_filters(question: str, query: QueryAnalysis) -> QueryAnalysis:
+    """Gắn cảm xúc và khoảng thời gian trích bằng luật vào kết quả phân tích.
+
+    Chạy cho cả nhánh LLM lẫn nhánh luật, để bộ lọc không phụ thuộc việc LLM
+    có đang hoạt động hay không. Mốc thời gian tường minh luôn lấy theo luật.
+    """
+    time_range = extract_time_range(question)
+    return replace(
+        query,
+        sentiment=query.sentiment or detect_sentiment_filter(question),
+        date_from=time_range.date_from.isoformat() if time_range else None,
+        date_to=time_range.date_to.isoformat() if time_range else None,
+        time_expression=time_range.expression if time_range else "",
+    )
+
+
+def detect_sentiment_filter(question: str) -> str | None:
+    normalized = normalize_text(question)
+    negative = _has_any_phrase(normalized, NEGATIVE_FILTER_PHRASES)
+    # "không hài lòng" chứa "hài lòng": bỏ cụm phủ định trước khi tìm ý tích cực.
+    positive = _has_any_phrase(re.sub(r"(khong|chua) hai long", " ", normalized), POSITIVE_FILTER_PHRASES)
+    if negative and positive:
+        return None  # hỏi cả khen lẫn chê: không lọc theo cảm xúc
+    if negative:
+        return "negative"
+    if positive:
+        return "positive"
+    if _has_any_phrase(normalized, NEUTRAL_FILTER_PHRASES):
+        return "neutral"
+    return None
 
 
 def normalize_text(text: str) -> str:
@@ -166,29 +229,8 @@ def _detect_intent(q: str) -> str:
     return "UNKNOWN"
 
 
-def _is_aspect_question(q: str) -> bool:
-    return any(
-        phrase in q
-        for phrase in [
-            "co bi",
-            "co gay",
-            "co mui",
-            "co mem",
-            "co tham",
-            "bi tran",
-            "gay ham",
-        ]
-    )
-
-
 def _phrase_in_text(phrase: str, text: str) -> bool:
     return re.search(rf"(?<![a-z0-9]){re.escape(phrase)}(?![a-z0-9])", text) is not None
-
-
-def _mapping_phrase_in_text(phrase: str, text: str) -> bool:
-    if phrase == "gia":
-        return _price_word_in_text(text)
-    return _phrase_in_text(phrase, text)
 
 
 def _price_word_in_text(text: str) -> bool:
@@ -198,14 +240,6 @@ def _price_word_in_text(text: str) -> bool:
 
 def _has_any_phrase(text: str, phrases: list[str]) -> bool:
     return any(_phrase_in_text(phrase, text) for phrase in phrases)
-
-
-def _merge_aspects(current: list[str], extra: list[str]) -> list[str]:
-    out = list(current)
-    for aspect in extra:
-        if aspect in ALLOWED_ASPECTS and aspect not in out:
-            out.append(aspect)
-    return out
 
 
 def _coerce_llm_result(raw: dict[str, Any]) -> QueryAnalysis | None:

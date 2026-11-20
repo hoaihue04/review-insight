@@ -323,9 +323,10 @@ async function analyze() {
 
     const data = await new Promise((resolve, reject) => {
       es = new EventSource(`/api/analyze/progress/${job_id}`);
+      // Sản phẩm nhiều review: tải review, chạy PhoBERT và ghi vector có thể mất vài phút.
       const timeout = setTimeout(() => {
-        reject(new Error("Phân tích quá 5 phút. Hãy thử lại."));
-      }, 5 * 60 * 1000);
+        reject(new Error("Phân tích quá 10 phút. Hãy thử lại."));
+      }, 10 * 60 * 1000);
 
       es.onmessage = (event) => {
         let payload;

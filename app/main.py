@@ -1,6 +1,9 @@
 ﻿from __future__ import annotations
 
+import os
 import sys
+import threading
+import time
 from pathlib import Path
 
 # Log của app có tiếng Việt và ký tự khung; trên Windows, khi stdout không phải
@@ -52,7 +55,35 @@ def create_app() -> FastAPI:
     fastapi_app.include_router(products.router)
     fastapi_app.include_router(health.router)
 
+    @fastapi_app.on_event("startup")
+    def _start_model_warmup() -> None:
+        if os.environ.get("MODEL_WARMUP", "1").strip().lower() in {"0", "false", "no", "off"}:
+            return
+        threading.Thread(target=_warm_up_models, name="model-warmup", daemon=True).start()
+
     return fastapi_app
+
+
+def _warm_up_models() -> None:
+    """Nạp sẵn embedding và reranker khi server vừa chạy (luồng nền).
+
+    bge-m3 và bge-reranker mất 1-2 phút để nạp; không nạp sẵn thì lần phân tích hoặc câu hỏi
+    đầu tiên phải chờ, dễ vượt giới hạn thời gian của giao diện.
+    """
+    from app.assistant.config import settings
+    from app.assistant.embedding import load_shared_embedding_model
+    from app.assistant.reranker import load_shared_reranker_model
+
+    started = time.perf_counter()
+    try:
+        if settings.embedding_model:
+            load_shared_embedding_model(settings.embedding_model)
+            print(f"[warmup] Đã nạp embedding {settings.embedding_model} ({time.perf_counter() - started:.0f}s)")
+        if settings.reranker_enabled:
+            load_shared_reranker_model(settings.reranker_model)
+            print(f"[warmup] Đã nạp reranker {settings.reranker_model} ({time.perf_counter() - started:.0f}s)")
+    except Exception as exc:  # nạp sẵn hỏng thì vẫn nạp lại khi cần, không làm dừng server
+        print(f"[warmup] Không nạp sẵn được model: {exc}")
 
 
 app = create_app()
