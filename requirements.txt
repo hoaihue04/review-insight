@@ -1,98 +1,38 @@
+# ReviewInsight
+# --- 1. Web app ---
+fastapi>=0.115.0
+uvicorn>=0.30.0
+jinja2>=3.1.0                # template HTML
+sqlalchemy>=2.0.0
+psycopg[binary]>=3.1.0       # driver PostgreSQL
+redis>=5.0.0                 
+requests>=2.31.0             
+httpx>=0.27.0
+python-dotenv>=1.0.0
 
-
+# --- 2. Mô hình ---
 torch>=2.1.0
-transformers>=4.38.0
-sentencepiece>=0.1.99        # tokenizer cho ViT5 / T5
-datasets>=2.16.0
-evaluate>=0.4.0
-accelerate>=0.26.0           # hỗ trợ Trainer (HuggingFace)
+transformers>=4.38.0         # PhoBERT
+sentence-transformers>=2.6.0 # BAAI/bge-m3 (embedding), BAAI/bge-reranker-v2-m3 (reranker)
 
-
-torchcrf>=1.1.0              # CRF layer
-seqeval>=1.2.2               # evaluation NER/BIO
-
-# ======================================================
-
-# 📊 3. DATA PROCESSING
-
-# ======================================================
-
+# --- 3. Xử lý dữ liệu ---
 pandas>=2.0.0
 numpy>=1.24.0
-scikit-learn>=1.3.0
-regex                        # xử lý text nâng cao
+regex
+emoji                        # xử lý emoji trong review
+underthesea                  # tách câu tiếng Việt
 
-# ======================================================
+# --- 4. LLM ---
+openai>=1.0.0                # giám khảo khi đánh giá
 
-# 🇻🇳 4. VIETNAMESE NLP
-
-# ======================================================
-
-pyvi
-underthesea
-
-# ======================================================
-
-# 🌐 5. CRAWLING / SCRAPING
-
-# ======================================================
-
-requests>=2.31.0
+# --- 5. Thu thập dữ liệu và huấn luyện ---
 beautifulsoup4>=4.12.0
-selenium                     # crawl dynamic content (Tiki)
-fake-useragent              # tránh bị block
-
-# ======================================================
-
-# 📈 6. VISUALIZATION
-
-# ======================================================
-
-matplotlib>=3.7.0
-seaborn
-plotly>=5.18.0
-
-# ======================================================
-
-# 🖥️ 7. WEB APP / DASHBOARD
-
-# ======================================================
-
-streamlit>=1.30.0            # demo nhanh
-fastapi>=0.115.0             # backend API
-uvicorn>=0.30.0              # ASGI server
-jinja2>=3.1.0                # template HTML
-sqlalchemy>=2.0.0            # PostgreSQL ORM for ReviewInsight v2
-psycopg[binary]>=3.1.0       # PostgreSQL driver
-
-# ======================================================
-
-# 🏷️ 8. ANNOTATION / LABELING
-
-# ======================================================
-
-label-studio
-
-# ======================================================
-
-# 🤖 9. LLM APIs (OPTIONAL)
-
-# ======================================================
-
-openai
-groq>=0.9.0
-sentence-transformers>=2.6.0
-redis>=5.0.0
-
-# ======================================================
-
-# 🧰 10. UTILS
-
-# ======================================================
-
 tqdm>=4.66.0
-python-dotenv>=1.0.0
-emoji                       # xử lý emoji trong review
-rouge_score>=0.1.2          # metric cho generative model (ViT5)
-rapidfuzz>=3.0.0            # string similarity cho RAGAS non-LLM retrieval metrics
+scikit-learn>=1.3.0          # SVM + TF-IDF, chia tập dữ liệu, đánh giá
+pytorch-crf>=0.7.2           # module torchcrf cho BiLSTM-CRF
 
+# --- 6. Đánh giá và kiểm thử ---
+ragas>=0.4.4,<0.5            
+pytest>=8.0
+
+# Label Studio (gán nhãn thủ công) là ứng dụng riêng, cài khi cần: pip install label-studio

@@ -1,7 +1,7 @@
 [project]
-name = "tiki-insight"
+name = "ReviewInsight"
 version = "0.1.0"
-description = "ABSA dashboard and AI shopping assistant for Tiki product reviews"
+description = "Aspect-based sentiment dashboard and RAG assistant for Vietnamese product reviews"
 requires-python = ">=3.10"
 
 [build-system]
