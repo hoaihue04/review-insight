@@ -244,7 +244,7 @@ Một số điểm đáng chú ý:
 
 | Lớp | Công nghệ |
 |---|---|
-| Thu thập dữ liệu | `requests` (API công khai của Tiki), BeautifulSoup |
+| Thu thập dữ liệu | `requests`, BeautifulSoup |
 | Xử lý dữ liệu | Python, pandas, NumPy, underthesea (tách câu) |
 | Mô hình ABSA | PhoBERT (PyTorch, Hugging Face Transformers). So sánh với BiLSTM-CRF và SVM + TF-IDF (scikit-learn) |
 | Gán nhãn dữ liệu | LLM tự gán nhãn, Label Studio để gán nhãn thủ công 200 mẫu và đánh giá kết quả của LLM |
